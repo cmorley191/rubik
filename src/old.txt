@@ -1,0 +1,405 @@
+
+  /* Top */
+
+  type CornerData = {
+    side: Side, space: number, adjacents: { side: number, space: number }[], misalignedPeer: { peer: CornerData, iAd: number, jAd: number } | null,
+  }
+  const misaligned = (corner: CornerData, solveds: CornerData[]) => {
+    for (let k = 0; k < solveds.length; k++) {
+      const solved = solveds[k];
+      for (let iAd = 0; iAd < 2; iAd++) for (let jAd = 0; jAd < 2; jAd++) {
+        if (arrangement[corner.adjacents[iAd].side][corner.adjacents[iAd].space] == arrangement[solved.adjacents[jAd].side][solved.adjacents[jAd].space]
+          && corner.adjacents[iAd].side != solved.adjacents[jAd].side) {
+
+          console.log(`Green on ${toLetter(corner.side)}@${corner.space} has ${arrangement[corner.adjacents[iAd].side][corner.adjacents[iAd].space]} on ${toLetter(corner.adjacents[iAd].side)}, while another has it on ${toLetter(solved.adjacents[jAd].side)}`);
+          corner.misalignedPeer = { peer: solved, iAd, jAd };
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  for (let t = 0; t < 100; t++) {
+    console.log(`${t}`);
+    const solvedGreens: CornerData[] = [];
+    const greens: CornerData[] = [];
+    for (let side = 0; side < 6; side++) {
+      const sidePerspective = getStandardSideOrientation(side);
+      for (let space = 0; space < 4; space++) {
+        if (arrangement[side][space] == Color.Green) {
+          const corners = toCorner(space);
+          const adjacentSides = corners.map(c => inspectSide(c, sidePerspective));
+          const adjacentPerspectives = adjacentSides.map(s => getStandardSideOrientation(s));
+          const green: CornerData = {
+            side,
+            space,
+            adjacents: [
+              { side: adjacentSides[0], space: toSpace(locateSide(side, adjacentPerspectives[0]), locateSide(adjacentSides[1], adjacentPerspectives[0])) },
+              { side: adjacentSides[1], space: toSpace(locateSide(side, adjacentPerspectives[1]), locateSide(adjacentSides[0], adjacentPerspectives[1])) },
+            ],
+            misalignedPeer: null,
+          };
+          greens.push(green);
+          if (green.side == Side.Up && !misaligned(green, solvedGreens)) solvedGreens.push(green);
+        }
+      }
+    }
+
+    let broughUpCorner = false;
+
+    /* side corners on top */
+
+    broughUpCorner = false;
+    for (let i = 0; i < greens.length; i++) {
+      const green = greens[i];
+      if (green.side != Side.Up && green.side != Side.Down && green.space < 2) {
+        console.log('bringing down top corner');
+
+        // rotate down to bottom row
+        move = {
+          orientation: standardOrientation,
+          side: green.side,
+          type: green.space == 0 ? MoveType.CCW : MoveType.CW,
+        }; applyMove(move); yield move;
+
+        // push away
+        move = {
+          orientation: standardOrientation,
+          side: Side.Down,
+          type: green.space == 0 ? MoveType.CCW : MoveType.CW,
+        }; applyMove(move); yield move;
+
+        // restore
+        move = {
+          orientation: standardOrientation,
+          side: green.side,
+          type: green.space == 0 ? MoveType.CW : MoveType.CCW
+        }; applyMove(move); yield move;
+
+        broughUpCorner = true;
+        break;
+      }
+    }
+    if (broughUpCorner) continue;
+
+    /* Side corners on bottom */
+
+    broughUpCorner = false;
+    for (let i = 0; i < greens.length; i++) {
+      const green = greens[i];
+      if (green.side != Side.Up && green.side != Side.Down && green.space > 1) {
+        console.log('bottom row');
+        const iAdjacent = green.adjacents[1];
+        let jAd = null;
+        const alignmentColor = arrangement[iAdjacent.side][iAdjacent.space];
+        solvedGreens.forEach(solved => {
+          for (jAd = 0; jAd < 2; jAd++) {
+            const jAdjacent = solved.adjacents[jAd];
+            if (alignmentColor == arrangement[jAdjacent.side][jAdjacent.space]) {
+              green.misalignedPeer = {
+                peer: solved,
+                iAd: 1,
+                jAd,
+              };
+              break;
+            }
+          }
+        });
+
+        if (green.misalignedPeer != null) {
+          console.log('aligning bottom corner');
+          const iAdjacent = green.adjacents[green.misalignedPeer.iAd];
+          const jAdjacent = green.misalignedPeer.peer.adjacents[green.misalignedPeer.jAd];
+
+          // prepare to inject - put the moved-away green opposite the color we want to align
+          move = horizontalRotation(
+            false,
+            green.side,
+            opposite(jAdjacent.side));
+          if (move != null) { applyMove(move); yield move; }
+
+          // bring down the injection point
+          move = {
+            orientation: { top: Side.Up, front: jAdjacent.side },
+            side: Side.Front,
+            type: (jAdjacent.space == 1) ? MoveType.CCW : MoveType.CW,
+          }; applyMove(move); yield move;
+
+          // inject
+          move = {
+            orientation: { top: Side.Up, front: jAdjacent.side },
+            side: Side.Down,
+            type: (jAdjacent.space == 1) ? MoveType.CW : MoveType.CCW,
+          }; applyMove(move); yield move;
+
+          // restore
+          move = {
+            orientation: { top: Side.Up, front: jAdjacent.side },
+            side: Side.Front,
+            type: (jAdjacent.space == 1) ? MoveType.CW : MoveType.CCW,
+          }; applyMove(move); yield move;
+        }
+        else {
+          // just bring it up anyways
+          console.log('bringing up a green');
+          // bring up a green
+          move = {
+            side: iAdjacent.side,
+            orientation: standardOrientation,
+            type: (iAdjacent.space == 3) ? MoveType.CCW : MoveType.CW,
+          }; applyMove(move); yield move;
+        }
+
+        broughUpCorner = true;
+        break;
+      }
+    }
+    if (broughUpCorner) continue;
+
+    /* top corners */
+
+    const misalignedGreen = greens.find(g => g.misalignedPeer != null);
+
+    if (misalignedGreen !== undefined) {
+      console.log('Aligning top corner');
+      // align it
+      const iAdjacent = misalignedGreen.adjacents[misalignedGreen.misalignedPeer.iAd];
+      const jAdjacent = misalignedGreen.misalignedPeer.peer.adjacents[misalignedGreen.misalignedPeer.jAd];
+
+      // turn the unused color down
+      move = {
+        orientation: { top: Side.Up, front: iAdjacent.side },
+        side: Side.Front,
+        type: (iAdjacent.space == 1) ? MoveType.CW : MoveType.CCW,
+      }; applyMove(move); yield move;
+
+      // and away
+      move = {
+        orientation: { top: Side.Up, front: iAdjacent.side },
+        side: Side.Down,
+        type: (iAdjacent.space == 1) ? MoveType.CW : MoveType.CCW,
+      }; applyMove(move); yield move;
+
+      // restore
+      move = {
+        orientation: { top: Side.Up, front: iAdjacent.side },
+        side: Side.Front,
+        type: (iAdjacent.space == 1) ? MoveType.CCW : MoveType.CW,
+      }; applyMove(move); yield move;
+
+      continue;
+    }
+
+    /* bottom corners */
+
+    broughUpCorner = false;
+    for (let i = 0; i < greens.length; i++) {
+      const green = greens[i];
+      if (green.side == Side.Down) {
+        console.log('bringing up bottom corners');
+        let freeTopSpace;
+        for (let space = 0; space < 4; space++) {
+          if (arrangement[Side.Up][space] != Color.Green) {
+            freeTopSpace = space;
+            break;
+          }
+        }
+
+        const targetBottomSpace = (freeTopSpace + 2) % 4;
+        const spaceRotation = [0, 1, 3, 2];
+        let iSpace = spaceRotation.findIndex(n => n == green.space);
+        let turns = 0;
+        while (spaceRotation[iSpace] != targetBottomSpace) {
+          iSpace = (iSpace + 1) % 4;
+          turns++;
+        }
+
+        // rotate the bottom
+        if (turns > 0) {
+          const moveType = (() => {
+            switch (turns) {
+              case 1: return MoveType.CW;
+              case 2: return MoveType.Double;
+              default: return MoveType.CCW;
+            }
+          })();
+          move = {
+            orientation: standardOrientation,
+            side: Side.Down,
+            type: moveType,
+          }; applyMove(move); yield move;
+        }
+
+        // rotate the green up to the bottom row
+        move = {
+          orientation: standardOrientation,
+          side: green.adjacents[0].side,
+          type: green.adjacents[0].space == 2 ? MoveType.CCW : MoveType.CW
+        }; applyMove(move); yield move;
+
+        broughUpCorner = true;
+        break;
+      }
+    }
+    if (broughUpCorner) continue;
+
+    break;
+  }
+
+
+  /* Bottom */
+
+  for (let t = 0; t < 20; t++) {
+    console.log('rotating bottom');
+    let sidePerspective = getStandardSideOrientation(Side.Down);
+    let alignedCorner: Side[] | null = null;
+    let misalignedExist = false;
+    for (let space = 0; space < 4; space++) {
+      const corners = toCorner(space);
+      const adjacentSides = corners.map(c => inspectSide(c, sidePerspective));
+      const adjacentPerspectives = adjacentSides.map(s => getStandardSideOrientation(s));
+      const adjacentSpaces = [
+        toSpace(locateSide(Side.Down, adjacentPerspectives[0]), locateSide(adjacentSides[1], adjacentPerspectives[0])),
+        toSpace(locateSide(Side.Down, adjacentPerspectives[1]), locateSide(adjacentSides[0], adjacentPerspectives[1])),
+      ];
+      const colors = [
+        arrangement[Side.Down][space],
+        arrangement[adjacentSides[0]][adjacentSpaces[0]],
+        arrangement[adjacentSides[1]][adjacentSpaces[1]],
+      ];
+      const adjacentSideColors = [
+        Color.Blue,
+        arrangement[adjacentSides[0]][0],
+        arrangement[adjacentSides[1]][0],
+      ];
+
+      if (colors.some(c => !adjacentSideColors.some(c2 => c2 == c))
+        || adjacentSideColors.some(c => !colors.some(c2 => c2 == c))) {
+        misalignedExist = true;
+      }
+      else {
+        alignedCorner = adjacentSides;
+      }
+    }
+    if (misalignedExist && alignedCorner == null) {
+      // try again next time
+      console.log('failed!');
+      move = {
+        orientation: { top: Side.Down, front: Side.Front },
+        side: Side.Up,
+        type: MoveType.CW,
+      }; applyMove(move); yield move;
+      continue;
+    }
+    else if (misalignedExist) {
+      // algorithm on this corner
+      console.log('nice!');
+      const relativeSide = locateSide(alignedCorner[1], { top: Side.Down, front: alignedCorner[0] });
+      const perspective = (relativeSide == Side.Right)
+        ? { top: Side.Down, front: alignedCorner[0] }
+        : { top: Side.Down, front: alignedCorner[1] };
+
+      const leftRotate: Move = {
+        orientation: perspective,
+        side: Side.Up,
+        type: MoveType.CW
+      };
+      const rightRotate: Move = {
+        orientation: perspective,
+        side: Side.Up,
+        type: MoveType.CCW
+      };
+
+      applyMove(leftRotate); yield leftRotate;
+
+      move = {
+        orientation: perspective,
+        side: Side.Right,
+        type: MoveType.CW
+      }; applyMove(move); yield move;
+
+      applyMove(rightRotate); yield rightRotate;
+
+      move = {
+        orientation: perspective,
+        side: Side.Left,
+        type: MoveType.CCW
+      }; applyMove(move); yield move;
+
+      applyMove(leftRotate); yield leftRotate;
+
+      move = {
+        orientation: perspective,
+        side: Side.Right,
+        type: MoveType.CCW
+      }; applyMove(move); yield move;
+
+      applyMove(rightRotate); yield rightRotate;
+
+      move = {
+        orientation: perspective,
+        side: Side.Left,
+        type: MoveType.CW
+      }; applyMove(move); yield move;
+
+
+      continue;
+    } else {
+      // done aligning corners
+      break;
+    }
+  }
+
+  let perspective = {
+    top: Side.Down,
+    front: Side.Back,
+  };
+  for (let i = 0; i < 4; i++) {
+    for (let t = 0; t < 2; t++) {
+      if (arrangement[Side.Down][8] == Color.Blue) break;
+      // rotate corner
+
+      for (let k = 0; k < 2; k++) {
+        move = {
+          orientation: perspective,
+          side: Side.Right,
+          type: MoveType.CCW,
+        }; applyMove(move); yield move;
+
+        move = {
+          orientation: perspective,
+          side: Side.Down,
+          type: MoveType.CCW,
+        }; applyMove(move); yield move;
+
+        move = {
+          orientation: perspective,
+          side: Side.Right,
+          type: MoveType.CW,
+        }; applyMove(move); yield move;
+
+        move = {
+          orientation: perspective,
+          side: Side.Down,
+          type: MoveType.CW
+        }; applyMove(move); yield move;
+      }
+    }
+    move = {
+      orientation: perspective,
+      side: Side.Up,
+      type: MoveType.CCW,
+    }; applyMove(move); yield move;
+  }
+
+  const frontEdgeColor = arrangement[Side.Front][8];
+  for (let side = 0; side < 6; side++) {
+    if (side == Side.Front) continue;
+    if (arrangement[side][1] == frontEdgeColor) {
+      move = horizontalRotation(false, Side.Front, side);
+      applyMove(move); yield move;
+
+      break; // DONE!
+    }
+  }
