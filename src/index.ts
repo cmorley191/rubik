@@ -88,7 +88,7 @@ camera.rotation.x = -(Math.PI / 2 - cameraPosition.phi);
 camera.rotation.y = cameraPosition.theta;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth - 100, window.innerHeight - 100);
+renderer.setSize(window.innerWidth - 40, window.innerHeight - 40);
 let canvas = renderer.domElement;
 document.body.appendChild(canvas);
 
@@ -297,9 +297,11 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
       printArrangement(arrangement, DEGREE);
       console.log('solution:');
       const moveGen = Solution.solve(arrangement, DEGREE);
+      let moveCount = 0;
       while (true) {
         const nextMove = moveGen.next();
         if (nextMove.done == true) break;
+        moveCount++;
         const moveString = toNotation(transform(nextMove.value, standardOrientation), DEGREE);
         console.log(moveString);
         animations.push(
@@ -312,7 +314,7 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
       }
       animations.push(extendAnimation(getDelayAnimation(2000), () => { console.log('Solved!') }));
       //if (followup != null) animations.push(followup);
-      console.log('solution queued up');
+      console.log(`solution queued up (${moveCount} moves)`);
 
       return { animationDone: true, renderNeeded: false, minDelay: 3000 };
     },
