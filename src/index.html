@@ -1,28 +1,69 @@
 <!DOCTYPE html>
 <html>
-  <head> <meta charset="utf-8">
+  <head> 
+    <meta charset="utf-8">
+    <style>
+      ::-webkit-scrollbar { background: black }
+      ::-webkit-scrollbar-track { background: #202020; }
+      ::-webkit-scrollbar-thumb { background: white; }
+      ::-webkit-scrollbar-thumb:hover { background: #B0B0B0; }
+
+      #sidebar {
+        pointer-events: none;
+        visibility: hidden; /* changed on page load */
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        z-index: 2;
+      }
+
+      #sidebar > * {
+        margin-left: 10px; /* helps align with controls image */
+        margin-bottom: 20px; /* spacing */
+      }
+
+      #sidebar * button {
+        pointer-events: auto;
+        margin-right: 5px; /* spacing between buttons */
+        background-color: #202020;
+        color: white;
+      }
+
+      #solution_container {
+        max-width: 500px;
+        max-height: 50vh;
+        overflow-y: auto;
+        direction: rtl;
+      }
+      #solution_container * {
+        direction: ltr;
+        margin: 10px 10px 10px 10px;
+      }
+
+      #solution_text {
+        color: white;
+        font-size: 26px;
+        font-family: Georgia, 'Times New Roman', Times, serif; 
+      }
+    </style>
+  </head>
   <body style="margin: 0px; background-color: black;">
-    <div id="sidebar" style="pointer-events: none; visibility: hidden; position:absolute; top: 20px; left: 20px; z-index: 2">
-      <div style="margin-left: 10px;">
-        <button 
-          style="pointer-events: auto; margin-right: 5px; background-color: #202020; color: white"
-          onclick="window.location=`${window.location.href.split('?')[0]}?s=2`;">
+    <div id="sidebar">
+      <div>
+        <button onclick="window.location=`${window.location.href.split('?')[0]}?s=2`;">
             2x2
         </button>
-        <button 
-          style="pointer-events: auto; margin-right: 5px; background-color: #202020; color: white"
-          onclick="window.location=`${window.location.href.split('?')[0]}?s=3`;">
+        <button class='degreeButton' onclick="window.location=`${window.location.href.split('?')[0]}?s=3`;">
             3x3
         </button>
-        <button 
-          style="pointer-events: auto; margin-right: 5px; background-color: #202020; color: white"
-          onclick="window.location=`${window.location.href.split('?')[0]}?s=4`;">
+        <button class='degreeButton' onclick="window.location=`${window.location.href.split('?')[0]}?s=4`;">
             4x4
         </button>
       </div>
-      <img id="controls" style="max-width: 60%" src=<%=require("../images/controls.png")%> />
-      <p id="solution_text" style="color: white; margin-left: 10px; max-width: 500px; max-height: 50vh; font-size: 26px; font-family: Georgia, 'Times New Roman', Times, serif; overflow-y: auto;">
-      </p>
+      <img id="controls" style="margin-left: 0px; max-width: 60%" src=<%=require("../images/controls.png")%> />
+      <div id="solution_container" class="solution" >
+        <p id="solution_text" class="solution" ></p>
+      </div>
     </div>
   </body>
 </html>

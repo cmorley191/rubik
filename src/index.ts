@@ -408,6 +408,8 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
       console.log('solution:');
 
       const solutionEle = document.getElementById('solution_text');
+      Array.from(document.getElementsByClassName('solution')).forEach(element => (element as HTMLElement).style.pointerEvents = 'auto');
+
       const validationArrangement = deepCopy(arrangement);
       let moveCount = 0;
       let solved = false;
@@ -415,7 +417,6 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
       try {
         const moveGen = Solution.solve(arrangement, DEGREE);
 
-        solutionEle.style.pointerEvents = 'auto';
         solutionEle.innerHTML = ': <br />';
         let headers: { text: string, level: number }[] = [];
         let headerLevel = -1;
@@ -561,7 +562,7 @@ function getShuffleAnimation(count: number, speed: number = undefined, solveLoop
           console.log('shuffling');
           const solutionEle = document.getElementById('solution_text');
           solutionEle.innerHTML = "";
-          solutionEle.style.pointerEvents = 'none';
+          Array.from(document.getElementsByClassName('solution')).forEach(element => (element as HTMLElement).style.pointerEvents = 'none');
         }
 
 
@@ -824,7 +825,7 @@ window.addEventListener('keypress', function (evt) {
           }
         }
         if (issueFound) {
-          solutionEle.style.pointerEvents = 'auto';
+          Array.from(document.getElementsByClassName('solution')).forEach(element => (element as HTMLElement).style.pointerEvents = 'auto');
           solutionEle.innerHTML = issueText;
         } else {
           animations.push(getSolutionAnimation());
