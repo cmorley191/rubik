@@ -1337,10 +1337,10 @@ export function* solve(arr: Arrangement, degree: number) {
               posPerspective = { top: Side.Down, front: sideCircle[(sideCircle.findIndex(s => s == posPerspective.front) + 1) % 4] };
             }
 
-            yield { text: 'BR Corner', level: 3 };
-
             if (!topRightPositioned()) {
               /* couldn't find it, fix with moves */
+              yield { text: `1st Corner`, level: 3 };
+
               //printArrangement(arrangement, degree);
               console.log(`top right not positioned (looking at ${toLetter(posPerspective.front)})`);
 
@@ -1366,7 +1366,11 @@ export function* solve(arr: Arrangement, degree: number) {
             break;
           }
 
-          yield { text: 'BL, FL, and FR Corners', level: 3 };
+          yield {
+            text: `${toLetter(inspectSide(Side.Front, posPerspective))}${toLetter(inspectSide(Side.Left, posPerspective))}`
+              + `, ${toLetter(inspectSide(Side.Back, posPerspective))}${toLetter(inspectSide(Side.Left, posPerspective))}`
+              + `, and ${toLetter(inspectSide(Side.Back, posPerspective))}${toLetter(inspectSide(Side.Right, posPerspective))} Corners`, level: 3
+          };
 
           let attempt3 = -1;
           while (!topLeftPositioned() && attempt3 < 15) { // attempt3 is an infinite-loop catch

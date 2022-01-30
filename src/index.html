@@ -6,7 +6,8 @@
       ::-webkit-scrollbar { background: black }
       ::-webkit-scrollbar-track { background: #202020; }
       ::-webkit-scrollbar-thumb { background: white; }
-      ::-webkit-scrollbar-thumb:hover { background: #B0B0B0; }
+      ::-webkit-scrollbar-thumb:hover { background: #C0C0C0; }
+      ::-webkit-scrollbar-thumb:active { background: #A0A0A0; }
 
       #sidebar {
         pointer-events: none;
@@ -35,15 +36,20 @@
         overflow-y: auto;
         direction: rtl;
       }
-      #solution_container * {
+      #solution_container > * {
         direction: ltr;
-        margin: 10px 10px 10px 10px;
+        margin: 5px 10px 10px 10px;
       }
 
       #solution_text {
         color: white;
         font-size: 26px;
         font-family: Georgia, 'Times New Roman', Times, serif; 
+      }
+
+      .solution_step {
+        margin-left: 0px;
+        margin-right: 10px;
       }
     </style>
   </head>

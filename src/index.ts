@@ -420,7 +420,10 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
         solutionEle.innerHTML = ': <br />';
         let headers: { text: string, level: number }[] = [];
         let headerLevel = -1;
-        let indent = "&ensp;&ensp;";
+        const halftab = "&ensp;";
+        const tab = `${halftab}${halftab}`;
+        const sectionBreakText = '<div style="height:13px;" ></div>';
+        let indent = tab;
         let moveLineStarted = false;
         let moveLineCount = 0;
         let sectionBreak = false;
@@ -448,29 +451,30 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
               headerLevel = nextMoveValue.level - 1;
               headerLevel = -1;
               indent = "";
-              for (let i = 0; i < nextMoveValue.level; i++) indent += "&ensp;&ensp;";
-              if (!sectionBreak) solutionEle.innerHTML += `<div style="height:15px;" ></div>`;
+              for (let i = 0; i < nextMoveValue.level; i++) indent += tab;
+              if (!sectionBreak) solutionEle.innerHTML += sectionBreakText;
               sectionBreak = true;
               moveLineCount = 0;
               moveLineStarted = false;
             }
           } else {
+            const iMove = moveCount;
             moveCount++;
 
             let printedHeader = false;
             if (headers.length != 0) {
               printedHeader = true;
-              if (!sectionBreak) solutionEle.innerHTML += '<div style="height:13px;" ></div>'
+              if (!sectionBreak) solutionEle.innerHTML += sectionBreakText
 
               let notFirstHeader = false;
               headers.forEach(header => {
                 if (header.level == 1) printArrangement(validationArrangement, DEGREE);
                 indent = "";
-                for (let i = 0; i < header.level; i++) indent += "&ensp;&ensp;";
+                for (let i = 0; i < header.level; i++) indent += tab;
                 console.log(header.text);
                 solutionEle.innerHTML += `${notFirstHeader ? '<br />' : ''}${indent}${header.text}`;
                 notFirstHeader = true;
-                indent += "&ensp;&ensp;";
+                indent += tab;
               });
               headers = [];
             }
@@ -486,7 +490,7 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
             sectionBreak = false;
 
             const moveString = toNotation(transform(nextMoveValue, standardOrientation), DEGREE);
-            solutionEle.innerHTML += `${moveString}  `;
+            solutionEle.innerHTML += `<span class="solution_step" id="solution_step_${iMove}">${moveString}</span>`;
             console.log(moveString);
 
             const rotation = toRotation(nextMoveValue, DEGREE);
@@ -494,7 +498,9 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
             animations.push(
               extendAnimation(
                 getRotateAnimation({ rotation, speed: 10 }),
-                () => { console.log(moveString); }));
+                () => { console.log(moveString); document.getElementById(`solution_step_${iMove}`).style.color = 'red'; },
+                undefined,
+                () => { document.getElementById(`solution_step_${iMove}`).style.color = ''; }));
 
           }
         }
