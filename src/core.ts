@@ -62,11 +62,11 @@ export function oppositeColor(color: Color): Color {
 export const COLORS = [Color.White, Color.Yellow, Color.Green, Color.Blue, Color.Red, Color.Orange];
 export function toShade(color: Color, highlighted: boolean = false) {
   switch (color) {
-    case Color.White: return !highlighted ? new THREE.Color('white') : new THREE.Color(.8, .8, .8);
-    case Color.Yellow: return !highlighted ? new THREE.Color('yellow') : new THREE.Color('khaki');
+    case Color.White: return !highlighted ? new THREE.Color('white') : new THREE.Color(.85, .85, .85);
+    case Color.Yellow: return !highlighted ? new THREE.Color('yellow') : new THREE.Color('gold');
     case Color.Green: return !highlighted ? new THREE.Color('green') : new THREE.Color('limegreen');
     case Color.Blue: return !highlighted ? new THREE.Color('navy') : new THREE.Color('mediumblue');
-    case Color.Red: return !highlighted ? new THREE.Color('darkred') : new THREE.Color('crimson');
+    case Color.Red: return !highlighted ? new THREE.Color('darkred') : new THREE.Color('red');
     case Color.Orange: return !highlighted ? new THREE.Color('darkorange') : new THREE.Color('orange');
     default: return !highlighted ? new THREE.Color(.25, .25, .25) : new THREE.Color(.4, .4, .4);
   }
@@ -145,7 +145,7 @@ export interface Move {
   orientation: Orientation
 }
 export function toNotation(move: Move, degree: number) {
-  if (degree != 2 && degree != 3 && degree != 4) return "XX";
+  if ((degree != 2 && degree != 3 && degree != 4) || move.layer?.depth > 2) return "";
   const typeNotation = (move.type == MoveType.CW) ? "" : (move.type == MoveType.CCW) ? "'" : 2;
   const soloEdge = move.layer === undefined || move.layer.depth == 1;
   if (soloEdge || !move.layer.thick) {
@@ -190,6 +190,15 @@ export interface Animation {
 
 export type Arrangement = Color[/*side*/][/*space (0-9, left-to-right and top-to-bottom*/];
 export type SpacesSettings = boolean[/*side*/][/*space*/];
+
+export function deepCopy(arr: Arrangement) {
+  const copy = []
+  for (let i = 0; i < 6; i++) {
+    copy.push(arr[i].slice());
+  }
+  return copy;
+}
+
 export function getStandardSideOrientation(side: Side): Orientation {
   const top = (() => {
     switch (side) {
@@ -199,6 +208,30 @@ export function getStandardSideOrientation(side: Side): Orientation {
     }
   })();
   return { top, front: side };
+}
+
+export function toOrdinal(n: number) {
+  if (n >= 11 && n <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
+
+export function itemList(items: string[]) {
+  if (items.length == 0) return "";
+  if (items.length == 1) return items[0];
+  const first = [...items]
+  const last = first.pop();
+  return `${first.join(", ")} and ${last}`;
+}
+
+export function range(start: number, end: number) {
+  const nums = [];
+  for (let i = start; i <= end; i++) nums.push(i);
+  return nums;
 }
 
 export function printArrangement(arr: Arrangement, degree: number) {

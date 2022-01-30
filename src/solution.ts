@@ -1,13 +1,5 @@
 import { EdgesGeometry, StaticDrawUsage } from 'three';
-import { Side, Axis, Color, Rotation, Move, Arrangement, transform, standardOrientation, getStandardSideOrientation, inspectSide, locateSide, MoveType, toRotation, rotateArrangement, getAxis, isPositive, sideRotations, opposite, toNotation, toLetter, oppositeColor, COLORS, printArrangement, reverse, Orientation } from './core';
-
-function deepCopy(arr: Arrangement) {
-  const copy = []
-  for (let i = 0; i < 6; i++) {
-    copy.push(arr[i].slice());
-  }
-  return copy;
-}
+import { Side, Axis, Color, Rotation, Move, Arrangement, transform, standardOrientation, getStandardSideOrientation, inspectSide, locateSide, MoveType, toRotation, rotateArrangement, getAxis, isPositive, sideRotations, opposite, toNotation, toLetter, oppositeColor, COLORS, printArrangement, reverse, Orientation, itemList, toOrdinal, range, deepCopy } from './core';
 
 function horizontalRotation(top: boolean, src: Side, dest: Side): Move | null {
   const srcPerspective = getStandardSideOrientation(src);
@@ -31,6 +23,7 @@ function horizontalRotation(top: boolean, src: Side, dest: Side): Move | null {
 }
 
 enum SolveProcedure {
+  Orientation,
   Centers,
   EdgePairing,
   UpEdges,
@@ -99,6 +92,7 @@ export function* solve(arr: Arrangement, degree: number) {
         ];
       case 3:
         return [
+          SolveProcedure.Orientation,
           SolveProcedure.UpEdges,
           SolveProcedure.UpCorners,
           SolveProcedure.SideEdges,
@@ -113,18 +107,86 @@ export function* solve(arr: Arrangement, degree: number) {
     }
   })();
 
-  printArrangement(arrangement, degree);
 
+
+  // ensure proper orientation
   for (let iStep = 0; iStep < steps.length; iStep++) {
     let move: Move;
+
+    printArrangement(arrangement, degree);
     switch (steps[iStep]) {
 
+      case SolveProcedure.Orientation: {
+        if (degree % 2 == 1) {
+          let currentOrientation: Orientation = {
+            top: +arrangement[Side.Up][Math.floor(degree / 2) * degree + Math.floor(degree / 2)],
+            front: +arrangement[Side.Front][Math.floor(degree / 2) * degree + Math.floor(degree / 2)]
+          };
+          if (!(currentOrientation.top == standardOrientation.top && currentOrientation.front == standardOrientation.front)) {
+            yield { text: "Rotate the cube.<br/>Put Green's center on top,<br/>put Red's center in front.", level: 0 };
+
+            printArrangement(arrangement, degree);
+            const upLocation = locateSide(Side.Up, currentOrientation);
+            switch (upLocation) {
+              case Side.Up: break;
+              case Side.Back:
+              case Side.Front:
+                move = {
+                  orientation: standardOrientation,
+                  side: Side.Right,
+                  layer: { depth: degree, thick: true },
+                  type: upLocation == Side.Front ? MoveType.CW : MoveType.CCW
+                }; applyMove(move); yield move;
+                break;
+              case Side.Left:
+              case Side.Right:
+                move = {
+                  orientation: standardOrientation,
+                  side: Side.Front,
+                  layer: { depth: degree, thick: true },
+                  type: upLocation == Side.Left ? MoveType.CW : MoveType.CCW
+                }; applyMove(move); yield move;
+                break;
+              case Side.Down:
+                move = {
+                  orientation: standardOrientation,
+                  side: Side.Right,
+                  layer: { depth: degree, thick: true },
+                  type: MoveType.Double
+                }; applyMove(move); yield move;
+                break;
+            }
+
+            printArrangement(arrangement, degree);
+            currentOrientation = {
+              top: +arrangement[Side.Up][Math.floor(degree / 2) * degree + Math.floor(degree / 2)],
+              front: +arrangement[Side.Front][Math.floor(degree / 2) * degree + Math.floor(degree / 2)]
+            };
+            const frontLocation = locateSide(Side.Front, currentOrientation);
+            const turns = sideCircle.findIndex(s => s == frontLocation);
+            if (turns > 0) {
+              move = {
+                orientation: standardOrientation,
+                side: Side.Up,
+                layer: { depth: degree, thick: true },
+                type: turns == 1 ? MoveType.CW : turns == 2 ? MoveType.Double : MoveType.CCW
+              }; applyMove(move); yield move;
+            }
+            printArrangement(arrangement, degree);
+          }
+        }
+      }
+        break;
+
       case SolveProcedure.Centers: {
+        yield { text: 'Centers', level: 1 };
+
         // We'll perform the same algorithm for 5 sides (6th side will be finished by 5 being finished).
         // First side will be Up, followed by all the side sides.
         // With the subject side at the top, move the 4 subject center spaces into that side (without messing up previously set centers).
         for (let t = 0; t < 5; t++) {
           const perspective = t == 0 ? { top: Side.Up, front: Side.Front } : { top: sideCircle[t - 1], front: Side.Down };
+          yield { text: `${toLetter(perspective.top)} Center`, level: 2 };
           const expectedColor = sideColors[perspective.top];
 
           // The algorithm is written for the standard perspective (Up/Front) -- it simply sets the above perspective on the moves.
@@ -187,6 +249,7 @@ export function* solve(arr: Arrangement, degree: number) {
           // check if one's already there
           const topCenters = assessCenters(Side.Up, expectedColor);
           spacesSet = topCenters.count;
+          yield { text: `Align ${itemList(range(1, spacesSet).map(n => toOrdinal(n)))} Space${spacesSet >= 2 ? 's' : ''}`, level: 3 };
           if (spacesSet > 0) {
             if (spacesSet != 4) {
               // rotate into position
@@ -203,7 +266,9 @@ export function* solve(arr: Arrangement, degree: number) {
 
           // look for space on the sides
           /* we will use roughly the method for the all the spaces, so loop */
-          while (spacesSet < 4) {
+          let iIt = -1;
+          while (spacesSet < 4 && iIt < 4) { // iIt is an infinite-loop catch
+            iIt++;
             //printArrangement(arrangement, degree);
             console.log(`looking for ${toLetter(perspective.top)} spaces (found ${spacesSet} so far)`);
 
@@ -224,6 +289,11 @@ export function* solve(arr: Arrangement, degree: number) {
             const relativeSidePerspective = getStandardSideOrientation(bestSide);
             // Need to convert to "absolute" perspective since the moves will execute based on this.
             const sidePerspective = { top: inspectSide(relativeSidePerspective.top, perspective), front: inspectSide(relativeSidePerspective.front, perspective) };
+
+            {
+              const centerCount = bestCenters.count == 3 ? 2 : bestCenters.count;
+              yield { text: `Set ${itemList(range(spacesSet + 1, spacesSet + centerCount).map(n => toOrdinal(n)))} Space${centerCount >= 2 ? 's' : ''}`, level: 3 };
+            }
 
             if (bestCenters.count == 4) {
               // move them all up
@@ -334,9 +404,12 @@ export function* solve(arr: Arrangement, degree: number) {
             }
           }
         }
+        yield { text: '', level: 0 };
       } break;
 
       case SolveProcedure.EdgePairing: {
+        yield { text: 'Pair Edges', level: 1 };
+
         const allUniqueEdges = (() => {
           let result = [];
           const [upOr, downOr, frontOr, backOr] = [Side.Up, Side.Down, Side.Front, Side.Back].map(s => getStandardSideOrientation(s));
@@ -371,6 +444,7 @@ export function* solve(arr: Arrangement, degree: number) {
           if (newSetPairs - setPairs > 1) console.log('bonus pairs matched!');
           else if (newSetPairs - setPairs < 1) console.log('lost some pairs!');
           setPairs = newSetPairs;
+          if (setPairs == allUniqueEdges.length) break;
 
           let solvedPair = false;
           for (let iUE = 0; iUE < allUniqueEdges.length; iUE++) {
@@ -384,6 +458,13 @@ export function* solve(arr: Arrangement, degree: number) {
               && adjacentColor1 == arrangement[ue1.adjacentSide][edgeSpacePairs[ue1.iAdjacentEdge][0]]) {
               continue;
             }
+
+            {
+              const colorSides = [color1, adjacentColor1].map(c => sideColors.findIndex(c2 => c2 == c));
+              colorSides.sort(s => getAxis(s));
+              yield { text: `${toOrdinal(setPairs + 1)} Edge (${toLetter(colorSides[1])}${toLetter(colorSides[0])})`, level: 2 };
+            }
+            yield { text: 'Align', level: 3 };
 
             //printArrangement(arrangement, degree);
             console.log(`Matching ${Color[color1]}/${Color[adjacentColor1]} pair at ${toLetter(ue1.side)}@edge${ue1.iEdge}`);
@@ -533,6 +614,7 @@ export function* solve(arr: Arrangement, degree: number) {
                 }
 
                 console.log('edge pairing');
+                yield { text: 'Connect', level: 3 };
                 // edge pairing algorithm:
                 const moves = [
                   { side: Side.Down, type: MoveType.CW, layer: { depth: degree / 2, thick: true } },
@@ -565,7 +647,11 @@ export function* solve(arr: Arrangement, degree: number) {
       } break;
 
       case SolveProcedure.UpEdges: {
-        while (true) {
+        yield { text: 'Upper Cross', level: 1 };
+
+        let iIt = -1;
+        while (iIt < 15) { // iIt is an infinite-loop catch
+          iIt++;
           //printArrangement(arrangement, degree);
           let solvedEdge = false;
           for (let side = 0; side < 6; side++) {
@@ -573,8 +659,11 @@ export function* solve(arr: Arrangement, degree: number) {
               let space = edgeSpaces[iEdge];
               if (arrangement[side][space] == Color.Green) {
                 console.log(`Fixing green edge ${toLetter(side)}@${space}`);
+
                 const sideOrientation = getStandardSideOrientation(side);
                 const zeroThree = iEdge == 0 || iEdge == 3;
+
+                const moveDownMoves = [];
 
                 /* bring to bottom */
                 if (side == Side.Up) {
@@ -591,7 +680,7 @@ export function* solve(arr: Arrangement, degree: number) {
                     orientation: standardOrientation,
                     side: adjacentSide,
                     type: MoveType.Double
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   side = Side.Down;
                   space = iEdge == 0 ? edgeSpaces[3] : iEdge == 3 ? edgeSpaces[0] : space;
@@ -602,7 +691,7 @@ export function* solve(arr: Arrangement, degree: number) {
                       orientation: sideOrientation,
                       side: Side.Front,
                       type: MoveType.CW,
-                    }; applyMove(move); yield move;
+                    }; applyMove(move); moveDownMoves.push(move);
                     space = edgeSpaces[iEdge == 0 ? 2 : 1];
                   }
 
@@ -611,21 +700,21 @@ export function* solve(arr: Arrangement, degree: number) {
                     orientation: sideOrientation,
                     side: space == edgeSpaces[2] ? Side.Right : Side.Left,
                     type: space == edgeSpaces[2] ? MoveType.CCW : MoveType.CW
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   // move away 
                   move = {
                     orientation: sideOrientation,
                     side: Side.Down,
                     type: space == edgeSpaces[2] ? MoveType.CW : MoveType.CCW
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   // restore
                   move = {
                     orientation: sideOrientation,
                     side: space == edgeSpaces[2] ? Side.Right : Side.Left,
                     type: space == edgeSpaces[2] ? MoveType.CW : MoveType.CCW
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   if (zeroThree) {
                     // restore
@@ -633,7 +722,7 @@ export function* solve(arr: Arrangement, degree: number) {
                       orientation: sideOrientation,
                       side: Side.Front,
                       type: MoveType.CCW,
-                    }; applyMove(move); yield move;
+                    }; applyMove(move); moveDownMoves.push(move);
                   }
 
                   space = edgeSpaceCircle[(sideCircle.findIndex(s => s == side) + 2) % 4];
@@ -646,6 +735,12 @@ export function* solve(arr: Arrangement, degree: number) {
                 const edgeEdge = edgeEdges[edgeSpaces.findIndex(s => s == space)];
                 const adjacentSide = inspectSide(edgeEdge, getStandardSideOrientation(Side.Down));
                 const targetSide = sideColors.findIndex(c => c == arrangement[adjacentSide][edgeSpaces[3]]);
+
+                yield { text: `${toLetter(targetSide)} Edge`, level: 2 };
+                for (let i = 0; i < moveDownMoves.length; i++) {
+                  yield moveDownMoves[i];
+                }
+
                 const colorPerspective = getStandardSideOrientation(targetSide);
                 move = horizontalRotation(false, adjacentSide, targetSide);
                 if (move != null) {
@@ -668,17 +763,25 @@ export function* solve(arr: Arrangement, degree: number) {
           }
           if (!solvedEdge) break;
         }
+
+        yield { text: '', level: 0 };
       } break;
 
       case SolveProcedure.UpCorners: {
-        while (true) {
+        yield { text: 'Upper Corners', level: 1 };
+
+        let attempt = -1;
+        while (attempt < 15) { // attempt is an infinite-loop catch
+          attempt++
           //printArrangement(arrangement, degree);
           let setSpace = false;
           for (let side = 0; side < 6; side++) {
             for (let iSpace = 0; iSpace < 4; iSpace++) {
               let space = cornerSpaces[iSpace]
-              if (arrangement[side][space] == Color.Green && !(side == Side.Up)) {
+              if (arrangement[side][space] == Color.Green) {
                 console.log(`fixing green corner ${toLetter(side)}@${space}`);
+
+                const moveDownMoves = [];
 
                 /* get into side bottom row */
                 if (side == Side.Up) {
@@ -698,21 +801,21 @@ export function* solve(arr: Arrangement, degree: number) {
                     orientation: sideOrientation,
                     side: xEdge,
                     type: zeroThree ? MoveType.CCW : MoveType.CW
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   // move away
                   move = {
                     orientation: sideOrientation,
                     side: Side.Back,
                     type: zeroThree ? MoveType.CCW : MoveType.CW
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   // restore
                   move = {
                     orientation: sideOrientation,
                     side: xEdge,
                     type: zeroThree ? MoveType.CW : MoveType.CCW
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   side = inspectSide(opposite(xEdge), sideOrientation);
                   space = zeroThree ? cornerSpaces[3] : cornerSpaces[2];
@@ -727,13 +830,14 @@ export function* solve(arr: Arrangement, degree: number) {
                   })();
                   const freeBottomSpace = cornerSpaces[(iFreeTopSpace + 2) % 4];
                   let turns = 0;
-                  for (let iSC = cornerSpaceCircle.findIndex(s => s == space); cornerSpaceCircle[iSC] != freeBottomSpace; iSC = (iSC + 1) % 4, turns++);
+                  let attempt2 = -1; // infinite loop catch
+                  for (let iSC = cornerSpaceCircle.findIndex(s => s == space); cornerSpaceCircle[iSC] != freeBottomSpace && attempt2 < 15; iSC = (iSC + 1) % 4, turns++, attempt2++);
                   if (turns != 0) {
                     move = {
                       orientation: sideOrientation,
                       side: Side.Front,
                       type: (turns == 1) ? MoveType.CW : (turns == 2) ? MoveType.Double : MoveType.CCW
-                    }; applyMove(move); yield move;
+                    }; applyMove(move); moveDownMoves.push(move);
 
                     space = freeBottomSpace;
                   }
@@ -745,21 +849,21 @@ export function* solve(arr: Arrangement, degree: number) {
                     orientation: sideOrientation,
                     side: xEdge,
                     type: (zeroThree) ? MoveType.CW : MoveType.CCW
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   // move away
                   move = {
                     orientation: sideOrientation,
                     side: Side.Front,
                     type: (zeroThree) ? MoveType.CCW : MoveType.CW
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   // restore
                   move = {
                     orientation: sideOrientation,
                     side: xEdge,
                     type: (zeroThree) ? MoveType.CCW : MoveType.CW
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   side = inspectSide(opposite(xEdge), sideOrientation);
                   space = (zeroThree) ? cornerSpaces[3] : cornerSpaces[2];
@@ -773,21 +877,21 @@ export function* solve(arr: Arrangement, degree: number) {
                     orientation: sideOrientation,
                     side: Side.Front,
                     type: (space == cornerSpaces[0]) ? MoveType.CCW : MoveType.CW,
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   // move away
                   move = {
                     orientation: sideOrientation,
                     side: Side.Down,
                     type: (space == cornerSpaces[0]) ? MoveType.CCW : MoveType.CW,
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   // restore
                   move = {
                     orientation: sideOrientation,
                     side: Side.Front,
                     type: (space == cornerSpaces[0]) ? MoveType.CW : MoveType.CCW,
-                  }; applyMove(move); yield move;
+                  }; applyMove(move); moveDownMoves.push(move);
 
                   side = inspectSide(xEdge, sideOrientation);
                   space = cornerSpaces[cornerSpaces.findIndex(s => s == space) + 2];
@@ -797,11 +901,18 @@ export function* solve(arr: Arrangement, degree: number) {
                 const sideOrientation = getStandardSideOrientation(side);
                 const [xEdge, yEdge] = cornerSpaceEdges[cornerSpaces.findIndex(s => s == space)];
                 const [xSide] = [inspectSide(xEdge, sideOrientation)];
-                const [xColor, yColor] = [
-                  arrangement[xSide][space == cornerSpaces[3] ? cornerSpaces[2] : cornerSpaces[3]],
-                  arrangement[Side.Down][cornerSpaceCircle[(sideCircle.findIndex(s => s == side) + cornerSpaces[(cornerSpaces.findIndex(s => s == space) - 2) % 4])]]
-                ];
-                const [xColorSide, yColorSide]: Side[] = [sideColors.findIndex(c => c == xColor), sideColors.findIndex(c => c == yColor)];
+                const xColor = arrangement[xSide][space == cornerSpaces[3] ? cornerSpaces[2] : cornerSpaces[3]]
+                const xColorSide = sideColors.findIndex(c => c == xColor);
+                {
+                  const yColorSide = sideCircle[(sideCircle.findIndex(s => s == xColorSide) + (cornerSpaces.findIndex(s => s == space) == 2 ? 1 : 3)) % 4];
+
+                  const [xAxisSide, zAxisSide] = getAxis(xColorSide) == Axis.X ? [xColorSide, yColorSide] : [yColorSide, xColorSide];
+                  yield { text: `${toLetter(zAxisSide)}${toLetter(xAxisSide)} Corner`, level: 2 };
+                  for (let i = 0; i < moveDownMoves.length; i++) {
+                    yield moveDownMoves[i];
+                  }
+                }
+
                 // prepare to inject
                 move = horizontalRotation(false, side, opposite(xColorSide));
                 if (move != null) {
@@ -839,12 +950,18 @@ export function* solve(arr: Arrangement, degree: number) {
           }
           if (!setSpace) break;
         }
+
+        yield { text: '', level: 0 };
       }
         break;
 
       case SolveProcedure.SideEdges: {
+        yield { text: 'Side Edges', level: 1 };
+
         const perspective = { top: Side.Down, front: Side.Back };
-        while (true) {
+        let attempt = -1;
+        while (attempt < 15) { // attempt is an infinite-loop catch
+          attempt++
           //printArrangement(arrangement, degree);
           let solvedEdge = false;
 
@@ -858,6 +975,11 @@ export function* solve(arr: Arrangement, degree: number) {
               console.log(`fixing blue edge ${space} with non-blue colors ${spaceColor} and ${adjacentColor}`);
               const [spaceColorSide, adjacentColorSide] = [spaceColor, adjacentColor].map(c => sideColors.findIndex(c2 => c2 == c));
               const clockwiseSetup = sideCircle.findIndex(s => s == adjacentColorSide) == (1 + sideCircle.findIndex(s => s == spaceColorSide)) % 4;
+
+              {
+                const [xAxisSide, zAxisSide] = (getAxis(spaceColorSide) == Axis.X) ? [spaceColorSide, adjacentColorSide] : [adjacentColorSide, spaceColorSide];
+                yield { text: `${toLetter(zAxisSide)}${toLetter(xAxisSide)} Edge`, level: 2 };
+              }
 
               // combined: line up edge with T, move away from other color
               move = horizontalRotation(false, adjacentSide, opposite(spaceColorSide));
@@ -920,14 +1042,20 @@ export function* solve(arr: Arrangement, degree: number) {
           }
           if (!solvedEdge) break;
         }
+
+        yield { text: '', level: 0 };
       } break;
 
       case SolveProcedure.DownEdges: {
+        yield { text: 'Down Cross', level: 1 };
+
         const perspective = { top: Side.Down, front: Side.Back };
 
         /* create the cross */
         // loop in case of parity
-        while (true) {
+        let attempt = -1;
+        while (attempt < 15) { // attempt is an infinite-loop catch
+          attempt++;
           enum Layout {
             Cross,
             HorizontalLine, VerticalLine,
@@ -959,6 +1087,8 @@ export function* solve(arr: Arrangement, degree: number) {
           }
 
           if (degree >= 4 && blueEdgeCount % 2 == 1) {  // 3x3 never has parity
+            yield { text: `Fix OLL Parity`, level: 2 };
+
             const parityEdge = blueEdgeCount == 1 ? blueEdge : nonBlueEdge;
             //printArrangement(arrangement, degree);
             console.log(`fixing OLL edge parity (on edge ${parityEdge})`);
@@ -991,6 +1121,8 @@ export function* solve(arr: Arrangement, degree: number) {
 
             continue; // try to make the cross again
           }
+
+          yield { text: `Create Cross`, level: 2 };
 
           possibleLayouts = possibleLayouts.filter(l => l != null);
 
@@ -1034,12 +1166,15 @@ export function* solve(arr: Arrangement, degree: number) {
           for (let iIt = 0; iIt < iterations.length; iIt++) {
             if (iIt == 1) {
               // previous it created a SE cross
+              yield { text: '', level: 3 };
               move = {
                 orientation: perspective,
                 side: Side.Up,
                 type: MoveType.Double
               }; applyMove(move); yield move;
             }
+
+            if (iterations.length > 1) yield { text: `${toOrdinal(iIt + 1)} Part`, level: 3 };
 
             // enter the matrix
             move = {
@@ -1077,8 +1212,12 @@ export function* solve(arr: Arrangement, degree: number) {
 
         /* arrange the cross */
         {
+          yield { text: 'Align Cross', level: 2 };
           let arrangePerspective = perspective;
-          while (true) {
+          let attempt = -1;
+          while (attempt < 15) { // attempt is an infinite-loop catch
+            attempt++
+            yield { text: '', level: 3 };
             //printArrangement(arrangement, degree);
             console.log('arranging bottom edges');
 
@@ -1112,6 +1251,8 @@ export function* solve(arr: Arrangement, degree: number) {
 
             if (bestAligned == 4) break;
 
+            yield { text: 'Flip Two', level: 3 };
+
             /* flip a misaligned side with its adjacent */
             const misalignedSide = (() => {
               for (let i = 0; i < 4; i++) {
@@ -1139,13 +1280,17 @@ export function* solve(arr: Arrangement, degree: number) {
           }
         }
 
+        yield { text: '', level: 0 };
       } break;
 
       case SolveProcedure.DownCorners: {
+        yield { text: 'Down Corners', level: 1 };
         const perspective = { top: Side.Down, front: Side.Back };
 
         // loop to do these steps twice in case of parity
-        while (true) {
+        let attempt = -1;
+        while (attempt < 15) { // attempt is an infinite-loop catch
+          attempt++;
           /* position the corners */
           let posPerspective = perspective;
           const topRightPositioned = () => {
@@ -1182,12 +1327,17 @@ export function* solve(arr: Arrangement, degree: number) {
             { side: Side.Left, type: MoveType.CW },
           ];
 
-          while (true) {
+          yield { text: 'Position Corners', level: 2 }
+          let attempt2 = -1;
+          while (attempt2 < 15) { // attempt2 is an infinite-loop catch
+            attempt2++;
             /* try to find the right perspective */
             for (let i = 0; i < 4; i++) {
               if (topRightPositioned()) break;
               posPerspective = { top: Side.Down, front: sideCircle[(sideCircle.findIndex(s => s == posPerspective.front) + 1) % 4] };
             }
+
+            yield { text: 'BR Corner', level: 3 };
 
             if (!topRightPositioned()) {
               /* couldn't find it, fix with moves */
@@ -1216,7 +1366,11 @@ export function* solve(arr: Arrangement, degree: number) {
             break;
           }
 
-          while (!topLeftPositioned()) {
+          yield { text: 'BL, FL, and FR Corners', level: 3 };
+
+          let attempt3 = -1;
+          while (!topLeftPositioned() && attempt3 < 15) { // attempt3 is an infinite-loop catch
+            attempt3++;
             //printArrangement(arrangement, degree);
             console.log(`top left not positioned (looking at ${toLetter(posPerspective.front)})`);
 
@@ -1241,6 +1395,8 @@ export function* solve(arr: Arrangement, degree: number) {
             return backRightColors.some(c => c == sideColors[right])
               && backRightColors.some(c => c == sideColors[back]);
           }
+
+          yield { text: 'Fix PLL Parity', level: 2 };
 
           if (backRightPositioned()) break;
           else {
@@ -1301,52 +1457,98 @@ export function* solve(arr: Arrangement, degree: number) {
         }
 
         /* rotations */
-        const topRightAligned = () => arrangement[Side.Down][cornerSpaces[3]] == Color.Blue;
+        yield { text: 'Rotate Corners', level: 2 };
+
+        let turns = 0;
+        let needRotations = false;
         for (let i = 0; i < 4; i++) {
-          while (!topRightAligned()) {
-            //printArrangement(arrangement, degree);
-            console.log('top right not aligned');
-            move = {
-              orientation: perspective,
-              side: Side.Right,
-              type: MoveType.CCW
-            }; applyMove(move); yield move;
-
-            move = {
-              orientation: perspective,
-              side: Side.Down,
-              type: MoveType.CCW
-            }; applyMove(move); yield move;
-
-            move = {
-              orientation: perspective,
-              side: Side.Right,
-              type: MoveType.CW
-            }; applyMove(move); yield move;
-
-            move = {
-              orientation: perspective,
-              side: Side.Down,
-              type: MoveType.CW
-            }; applyMove(move); yield move;
-          }
-          if (i != 3) {
-            move = {
-              orientation: perspective,
-              side: Side.Up,
-              type: MoveType.CW,
-            }; applyMove(move); yield move;
+          if (arrangement[Side.Down][cornerSpaces[i]] != Color.Blue) {
+            needRotations = true;
+            break;
           }
         }
+        if (needRotations) {
+          const topRightAligned = () => arrangement[Side.Down][cornerSpaces[3]] == Color.Blue;
+          let iIt = 0;
+          for (let i = 0; i < 4; i++) {
+            let rotatedOnce = false;
+            let attempt = -1;
+            while (!topRightAligned() && attempt < 15) { // attempt is an infinite-loop catch
+              attempt++;
+              if (!rotatedOnce) {
+                rotatedOnce = true;
+                iIt++;
+                if (turns > 0) {
+                  yield { text: '', level: 3 };
+                  move = {
+                    orientation: perspective,
+                    side: Side.Up,
+                    type: turns == 1 ? MoveType.CW : turns == 2 ? MoveType.Double : MoveType.CCW,
+                  }; yield move; // already applied on previous loop
+                }
+                turns = 0;
+
+                yield { text: `${toOrdinal(iIt)} Corner`, level: 3 };
+              }
+              //printArrangement(arrangement, degree);
+              console.log('top right not aligned');
+              move = {
+                orientation: perspective,
+                side: Side.Right,
+                type: MoveType.CCW
+              }; applyMove(move); yield move;
+
+              move = {
+                orientation: perspective,
+                side: Side.Down,
+                type: MoveType.CCW
+              }; applyMove(move); yield move;
+
+              move = {
+                orientation: perspective,
+                side: Side.Right,
+                type: MoveType.CW
+              }; applyMove(move); yield move;
+
+              move = {
+                orientation: perspective,
+                side: Side.Down,
+                type: MoveType.CW
+              }; applyMove(move); yield move;
+            }
+            if (i != 3) {
+              move = {
+                orientation: perspective,
+                side: Side.Up,
+                type: MoveType.CW,
+              }; applyMove(move); // intentional no-yield - will yield later
+              turns++;
+            }
+          }
+        }
+
+
+        if (turns > 0) {
+          yield { text: '', level: 3 };
+          move = {
+            orientation: perspective,
+            side: Side.Up,
+            type: turns == 1 ? MoveType.CW : turns == 2 ? MoveType.Double : MoveType.CCW,
+          }; yield move; // already applied on last loops
+        }
+
+        yield { text: 'Finish', level: 1 };
 
         /* twist */
         //printArrangement(arrangement, degree);
         console.log('looking for back');
-        for (let jSC = sideCircle.findIndex(s => s == Side.Back); true; jSC = (jSC + 1) % 4) {
+        let attempt2 = 0; // infinite loop catch
+        for (let jSC = sideCircle.findIndex(s => s == Side.Back); attempt2 < 15; jSC = (jSC + 1) % 4, attempt2++) {
           const side = sideCircle[jSC];
           if (arrangement[side][cornerSpaces[3]] == sideColors[Side.Back]) {
             let turns = 0;
-            for (let iSC = jSC; sideCircle[iSC] != Side.Back; iSC = (iSC + 1) % 4, turns++);
+            let attempt3 = 0; // infinite loop catch
+            for (let iSC = jSC; sideCircle[iSC] != Side.Back && attempt3 < 15; iSC = (iSC + 1) % 4, turns++, attempt3++);
             if (turns != 0) {
               move = {
                 orientation: perspective,
@@ -1357,6 +1559,8 @@ export function* solve(arr: Arrangement, degree: number) {
             break;
           }
         }
+
+        yield { text: '', level: 0 };
       } break;
 
       default:

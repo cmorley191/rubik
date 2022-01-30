@@ -1,6 +1,28 @@
 <!DOCTYPE html>
 <html>
   <head> <meta charset="utf-8">
-  <body style="margin: 0px">
+  <body style="margin: 0px; background-color: black;">
+    <div id="sidebar" style="pointer-events: none; visibility: hidden; position:absolute; top: 20px; left: 20px; z-index: 2">
+      <div style="margin-left: 10px;">
+        <button 
+          style="pointer-events: auto; margin-right: 5px; background-color: #202020; color: white"
+          onclick="window.location=`${window.location.href.split('?')[0]}?s=2`;">
+            2x2
+        </button>
+        <button 
+          style="pointer-events: auto; margin-right: 5px; background-color: #202020; color: white"
+          onclick="window.location=`${window.location.href.split('?')[0]}?s=3`;">
+            3x3
+        </button>
+        <button 
+          style="pointer-events: auto; margin-right: 5px; background-color: #202020; color: white"
+          onclick="window.location=`${window.location.href.split('?')[0]}?s=4`;">
+            4x4
+        </button>
+      </div>
+      <img id="controls" style="max-width: 60%" src=<%=require("../images/controls.png")%> />
+      <p id="solution_text" style="color: white; margin-left: 10px; max-width: 500px; max-height: 50vh; font-size: 26px; font-family: Georgia, 'Times New Roman', Times, serif; overflow-y: auto;">
+      </p>
+    </div>
   </body>
 </html>

@@ -1,25 +1,32 @@
 import * as THREE from 'three';
 import * as Solution from './solution';
-import { Side, Axis, getUnitVector, Color, COLORS, toShade, Rotation, AnimationTickResult, Animation, Arrangement, printArrangement, rotateArrangement, Move, getAxis, toRotation, MoveType, toNotation, standardOrientation, transform, toLetter, SpacesSettings, Orientation, inspectSide, locateSide } from './core';
-import { RectAreaLight } from 'three';
+import { Side, Axis, getUnitVector, Color, COLORS, toShade, Rotation, AnimationTickResult, Animation, Arrangement, printArrangement, rotateArrangement, Move, getAxis, toRotation, MoveType, toNotation, standardOrientation, transform, toLetter, SpacesSettings, Orientation, inspectSide, locateSide, deepCopy } from './core';
+import { RectAreaLight, Vector3 } from 'three';
 
 const GRAY = toShade(null);
 const BLACK = new THREE.Color(0, 0, 0);
 
-const DEGREE = 3; // 3x3? 4x4? nxn?
+const DEGREE = (() => { // 3x3? 4x4? nxn?
+  const defaultDegree = 3;
+  const res = new URLSearchParams(window.location.search).get('s');
+  if (res == null) return defaultDegree;
+  const parsed = parseInt(res);
+  if (parsed == NaN || parsed < 1) return defaultDegree;
+  return parsed;
+})();
 
 const cubeRadius = 0.4;
 const maxFPS = 1000;
 const minFrameInterval = 1 / maxFPS * 1000;
 
-function buildCubes(): THREE.Mesh[/*x*/][/*y*/][/*z*/] {
+function buildCubes(degree: number = DEGREE): THREE.Mesh[/*x*/][/*y*/][/*z*/] {
   const cubes: THREE.Mesh[][][] = [];
 
-  for (let x = 0; x < DEGREE; x++) {
+  for (let x = 0; x < degree; x++) {
     cubes.push([]);
-    for (let y = 0; y < DEGREE; y++) {
+    for (let y = 0; y < degree; y++) {
       cubes[x].push([]);
-      for (let z = 0; z < DEGREE; z++) {
+      for (let z = 0; z < degree; z++) {
         const geometry = new THREE.BoxGeometry(cubeRadius, cubeRadius, cubeRadius).toNonIndexed();
         const material = new THREE.MeshBasicMaterial({ vertexColors: true });
         const cube = new THREE.Mesh(geometry, material);
@@ -29,7 +36,7 @@ function buildCubes(): THREE.Mesh[/*x*/][/*y*/][/*z*/] {
         wireframe.renderOrder = 1; // make sure wireframes are rendered 2nd
         cube.add(wireframe);
 
-        const position = new THREE.Vector3(x, y, z).addScalar(-(DEGREE - 1) / 2).multiplyScalar(cubeRadius);
+        const position = new THREE.Vector3(x, y, z).addScalar(-(degree - 1) / 2).multiplyScalar(cubeRadius);
         cube.position.set(position.x, position.y, position.z);
 
         cubes[x][y].push(cube);
@@ -39,30 +46,30 @@ function buildCubes(): THREE.Mesh[/*x*/][/*y*/][/*z*/] {
   return cubes;
 }
 
-function colorCubes(cubes: THREE.Mesh[][][], arr: Arrangement, cubeOrientations: Orientation[][][], highlighted: SpacesSettings = null) {
+function colorCubes(cubes: THREE.Mesh[][][], arr: Arrangement, cubeOrientations: Orientation[][][], highlighted: SpacesSettings = null, degree: number = DEGREE) {
   const getShade = (side: Side, space: number) => toShade(arr[side][space], highlighted != null ? highlighted[side][space] : null);
 
-  for (let z = 0; z < DEGREE; z++) {
-    for (let y = 0; y < DEGREE; y++) {
-      for (let x = 0; x < DEGREE; x++) {
+  for (let z = 0; z < degree; z++) {
+    for (let y = 0; y < degree; y++) {
+      for (let x = 0; x < degree; x++) {
         const unorientedColors: THREE.Color[] = [];
 
-        if (x == DEGREE - 1) unorientedColors.push(getShade(Side.Right, (DEGREE - y) * DEGREE - 1 - z))
+        if (x == degree - 1) unorientedColors.push(getShade(Side.Right, (degree - y) * degree - 1 - z))
         else unorientedColors.push(GRAY);
 
-        if (x == 0) unorientedColors.push(getShade(Side.Left, (DEGREE - 1 - y) * DEGREE + z))
+        if (x == 0) unorientedColors.push(getShade(Side.Left, (degree - 1 - y) * degree + z))
         else unorientedColors.push(GRAY);
 
-        if (y == DEGREE - 1) unorientedColors.push(getShade(Side.Up, z * DEGREE + x))
+        if (y == degree - 1) unorientedColors.push(getShade(Side.Up, z * degree + x))
         else unorientedColors.push(GRAY);
 
-        if (y == 0) unorientedColors.push(getShade(Side.Down, (DEGREE - 1 - z) * DEGREE + x))
+        if (y == 0) unorientedColors.push(getShade(Side.Down, (degree - 1 - z) * degree + x))
         else unorientedColors.push(GRAY);
 
-        if (z == DEGREE - 1) unorientedColors.push(getShade(Side.Front, (DEGREE - 1 - y) * DEGREE + x))
+        if (z == degree - 1) unorientedColors.push(getShade(Side.Front, (degree - 1 - y) * degree + x))
         else unorientedColors.push(GRAY);
 
-        if (z == 0) unorientedColors.push(getShade(Side.Back, (DEGREE - y) * DEGREE - 1 - x))
+        if (z == 0) unorientedColors.push(getShade(Side.Back, (degree - y) * degree - 1 - x))
         else unorientedColors.push(GRAY);
 
         const colors =
@@ -87,7 +94,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const cameraRotationalAngle = -20; // facing rotation around y-axis (clockwise) (degrees)
 const cameraPolarAngle = -15; // facing rotation around x-axis (degrees)
-const cameraRadius = 4 + (cubeRadius * DEGREE); // distance from origin
+const cameraRadius = 3 + (cubeRadius * DEGREE); // distance from origin
 const cameraPosition = new THREE.Spherical(cameraRadius, (90 + cameraPolarAngle) * Math.PI / 180, -cameraRotationalAngle * Math.PI / 180);
 camera.position.setFromSpherical(cameraPosition);
 camera.rotation.x = -(Math.PI / 2 - cameraPosition.phi);
@@ -137,6 +144,13 @@ for (let i = 0; i < DEGREE; i++) for (let j = 0; j < DEGREE; j++) for (let k = 0
   const cube = cubes[i][j][k];
   puzzle.add(cube);
 }
+
+const refCubeArr = buildCubes(1);
+const refCube = refCubeArr[0][0][0];
+colorCubes(refCubeArr, COLORS.map(c => [c]), [[[standardOrientation]]], null, 1);
+refCube.translateY(cubeRadius * DEGREE * 1.5);
+refCube.scale.set(0.1 + 0.1 * DEGREE, 0.1 + 0.1 * DEGREE, 0.1 + 0.1 * DEGREE);
+puzzle.add(refCube);
 
 function getMousedSpace(clientX: number, clientY: number): { side: Side, space: number } | null {
   const raycaster = new THREE.Raycaster();
@@ -392,27 +406,129 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
     setup() {
       printArrangement(arrangement, DEGREE);
       console.log('solution:');
-      const moveGen = Solution.solve(arrangement, DEGREE);
+
+      const solutionEle = document.getElementById('solution_text');
+      const validationArrangement = deepCopy(arrangement);
       let moveCount = 0;
-      while (true) {
-        const nextMove = moveGen.next();
-        if (nextMove.done == true) break;
-        moveCount++;
-        const moveString = toNotation(transform(nextMove.value, standardOrientation), DEGREE);
-        console.log(moveString);
-        animations.push(
-          extendAnimation(
-            getRotateAnimation({
-              rotation: toRotation(nextMove.value, DEGREE),
-              speed: 10,
-            }),
-            () => { console.log(moveString); }));
+      let solved = false;
+
+      try {
+        const moveGen = Solution.solve(arrangement, DEGREE);
+
+        solutionEle.style.pointerEvents = 'auto';
+        solutionEle.innerHTML = ': <br />';
+        let headers: { text: string, level: number }[] = [];
+        let headerLevel = -1;
+        let indent = "&ensp;&ensp;";
+        let moveLineStarted = false;
+        let moveLineCount = 0;
+        let sectionBreak = false;
+
+
+        while (moveCount < 2000) {  // no cube we have solve instructions for takes this long.
+          const nextMove = moveGen.next();
+          if (nextMove.done == true) {
+            solved = true;
+            break;
+          }
+          const nextMoveValue = nextMove.value;
+          if ("text" in nextMoveValue) {
+            while (headerLevel != -1 && nextMoveValue.level <= headerLevel) {
+              headers.pop();
+              if (headers.length == 0) headerLevel = -1;
+              else headerLevel = headers[headers.length - 1].level;
+            }
+            if (nextMoveValue.text != '') {
+              headers.push(nextMoveValue);
+              headerLevel = nextMoveValue.level;
+              moveLineStarted = false;
+            }
+            else {
+              headerLevel = nextMoveValue.level - 1;
+              headerLevel = -1;
+              indent = "";
+              for (let i = 0; i < nextMoveValue.level; i++) indent += "&ensp;&ensp;";
+              if (!sectionBreak) solutionEle.innerHTML += `<div style="height:15px;" ></div>`;
+              sectionBreak = true;
+              moveLineCount = 0;
+              moveLineStarted = false;
+            }
+          } else {
+            moveCount++;
+
+            let printedHeader = false;
+            if (headers.length != 0) {
+              printedHeader = true;
+              if (!sectionBreak) solutionEle.innerHTML += '<div style="height:13px;" ></div>'
+
+              let notFirstHeader = false;
+              headers.forEach(header => {
+                if (header.level == 1) printArrangement(validationArrangement, DEGREE);
+                indent = "";
+                for (let i = 0; i < header.level; i++) indent += "&ensp;&ensp;";
+                console.log(header.text);
+                solutionEle.innerHTML += `${notFirstHeader ? '<br />' : ''}${indent}${header.text}`;
+                notFirstHeader = true;
+                indent += "&ensp;&ensp;";
+              });
+              headers = [];
+            }
+
+
+            if (printedHeader || !moveLineStarted || moveLineCount == 8) {
+              if (!sectionBreak || printedHeader) solutionEle.innerHTML += `<br />`;
+              solutionEle.innerHTML += `${indent}`;
+              moveLineStarted = true;
+              moveLineCount = 0;
+            }
+            moveLineCount++;
+            sectionBreak = false;
+
+            const moveString = toNotation(transform(nextMoveValue, standardOrientation), DEGREE);
+            solutionEle.innerHTML += `${moveString}  `;
+            console.log(moveString);
+
+            const rotation = toRotation(nextMoveValue, DEGREE);
+            rotateArrangement(rotation, validationArrangement, DEGREE);
+            animations.push(
+              extendAnimation(
+                getRotateAnimation({ rotation, speed: 10 }),
+                () => { console.log(moveString); }));
+
+          }
+        }
+      } catch (err) {
+        console.error(`Encountered error while solving: ${err}`);
+        solved = false;
       }
+
+      // validate
+      if (solved) {
+        for (let side = 0; side < 6; side++) {
+          for (let space = 0; space < DEGREE * DEGREE; space++) {
+            if (validationArrangement[side][space] != side) {
+              solved = false;
+              break;
+            }
+          }
+        }
+        if (!solved) console.log('validation failed.');
+        printArrangement(validationArrangement, DEGREE);
+      }
+
+      if (!solved) {
+        while (animations.length != 0) animations.pop();
+        solutionEle.innerHTML = `Can't solve.<br/>(is the arrangement correct?)`;
+        return { animationDone: true, renderNeeded: false };
+      }
+
+      solutionEle.innerHTML = `Solution (${moveCount} moves)${solutionEle.innerHTML}`;
+
       animations.push(extendAnimation(getDelayAnimation(2000), () => { console.log('Solved!') }));
       //if (followup != null) animations.push(followup);
       console.log(`solution queued up(${moveCount} moves)`);
 
-      return { animationDone: true, renderNeeded: false, minDelay: 3000 };
+      return { animationDone: true, renderNeeded: false, minDelay: 1500 };
     },
     tick() { return { animationDone: true, renderNeeded: false } },
     teardown() { },
@@ -421,8 +537,9 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
 
 let lastShuffleMove: Move | null = null;
 let lastShuffleRotation: Rotation | null = null;
-function getShuffleAnimation(count: number, speed: number = undefined, solveLoop: boolean = false, delay: number = undefined, firstInstance: boolean = true, originalCount: number = 0): Animation {
+function getShuffleAnimation(count: number, speed: number = undefined, solveLoop: boolean = false, delay: number = undefined, firstInstance: boolean = true, originalCount: number = null): Animation {
   //const skipMiddle = (iLayer: number) => (iLayer < Math.floor(DEGREE / 2)) ? iLayer : iLayer + 1;
+  if (originalCount == null) originalCount = count;
 
   const permitted = (move: Move) => {
     const rot = toRotation(move, DEGREE);
@@ -440,7 +557,14 @@ function getShuffleAnimation(count: number, speed: number = undefined, solveLoop
   return {
     setup() {
       if (count != null && count > 0) {
-        if (firstInstance) console.log('shuffling');
+        if (firstInstance) {
+          console.log('shuffling');
+          const solutionEle = document.getElementById('solution_text');
+          solutionEle.innerHTML = "";
+          solutionEle.style.pointerEvents = 'none';
+        }
+
+
         let move: Move;
         do {
           move = {
@@ -454,7 +578,10 @@ function getShuffleAnimation(count: number, speed: number = undefined, solveLoop
           }
         } while (!permitted(move));
 
-        const spec = { rotation: toRotation(move, DEGREE), speed };
+        const spec = {
+          rotation: toRotation(move, DEGREE),
+          speed: Math.max(Math.min(speed, 5), 5 + (speed - 5) * (1 / (1 + Math.pow(10, -7 * (-0.15 + Math.min(count, originalCount - count) / originalCount)))))
+        };
         animations.push(extendAnimation(getRotateAnimation(spec), () => { console.log(toNotation(move, DEGREE)); }));
         lastShuffleMove = move;
         lastShuffleRotation = spec.rotation;
@@ -526,8 +653,15 @@ function loopFps() {
 }
 setInterval(loopFps, 10000);
 
+window.addEventListener('resize', evt => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  requestRender();
+});
+
 let mainDown = false, alternateDown = false, mainPress = false, alternatePress = false,
-  mouseX = 0, mouseY = 0, dragging = false, dragSrcX = 0, dragSrcY = 0;
+  mouseX = 0, mouseY = 0, dragging = false, dragSrcX = 0, dragSrcY = 0, justChangedSpace: { side: Side, space: number } = null;
 const cameraZAxis = new THREE.Vector3().setFromSpherical(cameraPosition).normalize();
 const worldZAxis = new THREE.Vector3(0, 0, 1);
 const mouseSpeed = 6 / 400; // radians per pixel
@@ -567,6 +701,74 @@ function updateMouseData(evt: MouseEvent, pressEvent: boolean) {
   if (!mainDown && !alternateDown) dragging = false;
   return result;
 }
+function mouseMoveHandler(evt: MouseEvent) {
+  evt.preventDefault();
+  const { deltaX, deltaY } = updateMouseData(evt, false);
+  let cursor = 'default';
+
+  const mousedSpace = getMousedSpace(mouseX, mouseY);
+  if (mousedSpace != null) {
+    cursor = `grab`;
+  }
+
+  if (mainDown || alternateDown) {
+    cursor = 'grabbing';
+    const cameraXAxis = (() => {
+      const spher = new THREE.Spherical().copy(cameraPosition);
+      spher.theta += Math.PI / 2;
+      spher.phi = Math.PI / 2;
+      return new THREE.Vector3().setFromSpherical(spher).normalize();
+    })();
+    const cameraYAxis = (() => {
+      const spher = new THREE.Spherical().copy(cameraPosition);
+      spher.phi -= Math.PI / 2;
+      return new THREE.Vector3().setFromSpherical(spher).normalize();
+    })();
+    const worldXAxis = new THREE.Vector3(1, 0, 0);
+    const worldYAxis = new THREE.Vector3(0, 1, 0);
+
+    if (mainDown) {
+      puzzle.rotateOnWorldAxis(cameraYAxis, deltaX * mouseSpeed);
+      puzzle.rotateOnWorldAxis(cameraXAxis, deltaY * mouseSpeed);
+    }
+    if (alternateDown) {
+      const getAngle = (p1: { x: number, y: number }, p2: { x: number, y: number }) => {
+        const { x: x1, y: y1 } = getCanvasCoords(p1.x, p1.y);
+        const { x: x2, y: y2 } = getCanvasCoords(p2.x, p2.y);
+
+        const a1 = Math.atan2(y1, x1);
+        const a2 = Math.atan2(y2, x2);
+
+        return a2 - a1;
+      }
+
+      puzzle.rotateOnWorldAxis(cameraZAxis, getAngle({ x: mouseX - deltaX, y: mouseY - deltaY }, { x: mouseX, y: mouseY }));
+    }
+
+    requestRender();
+  }
+
+  if (currentAnimation == null && animations.length == 0) {
+    const isJustChanged = mousedSpace != null && justChangedSpace != null && mousedSpace.side == justChangedSpace.side && mousedSpace.space == justChangedSpace.space;
+    if (!isJustChanged) justChangedSpace = null;
+    const prevHighlighted = highlighted.some(a => a.some(b => b));
+    const shouldHighlight = mousedSpace != null && !dragging && !isJustChanged;
+    if ((prevHighlighted && !shouldHighlight) // if we need to reset
+      || (mousedSpace != null && !highlighted[mousedSpace.side][mousedSpace.space]) // or if we need to highlight something
+    ) {
+      for (let side = 0; side < 6; side++) for (let space = 0; space < DEGREE * DEGREE; space++) highlighted[side][space] = false;
+      if (shouldHighlight) {
+        highlighted[mousedSpace.side][mousedSpace.space] = true;
+      }
+      colorCubes(cubes, arrangement, cubeOrientations, highlighted);
+      requestRender();
+    }
+    if (cursor != 'grabbing' && (highlighted.some(a => a.some(b => b)) || isJustChanged)) cursor = 'pointer';
+  }
+
+  renderer.domElement.style.cursor = cursor;
+}
+canvas.addEventListener('mousemove', mouseMoveHandler, false);
 canvas.addEventListener('mousedown', function (evt) {
   evt.preventDefault();
   const data = updateMouseData(evt, true);
@@ -578,76 +780,60 @@ canvas.addEventListener('mouseup', function (evt) {
     const mousedSpace = getMousedSpace(mouseX, mouseY);
     if (mousedSpace != null) {
       arrangement[mousedSpace.side][mousedSpace.space] = (arrangement[mousedSpace.side][mousedSpace.space] + (data.mainClick ? 1 : 5)) % 6;
+      highlighted[mousedSpace.side][mousedSpace.space] = false;
       colorCubes(cubes, arrangement, cubeOrientations, highlighted);
       requestRender();
+      justChangedSpace = mousedSpace;
     }
   }
+  mouseMoveHandler(evt);
 }, false);
 canvas.addEventListener('contextmenu', evt => evt.preventDefault());
-canvas.addEventListener('mousemove', function (evt) {
-  evt.preventDefault();
-  const { deltaX, deltaY } = updateMouseData(evt, false);
-
-  if (currentAnimation == null && animations.length == 0 && (deltaX != 0 || deltaY != 0)) {
-    if (mainDown || alternateDown) {
-      const cameraXAxis = (() => {
-        const spher = new THREE.Spherical().copy(cameraPosition);
-        spher.theta += Math.PI / 2;
-        spher.phi = Math.PI / 2;
-        return new THREE.Vector3().setFromSpherical(spher).normalize();
-      })();
-      const cameraYAxis = (() => {
-        const spher = new THREE.Spherical().copy(cameraPosition);
-        spher.phi -= Math.PI / 2;
-        return new THREE.Vector3().setFromSpherical(spher).normalize();
-      })();
-      const worldXAxis = new THREE.Vector3(1, 0, 0);
-      const worldYAxis = new THREE.Vector3(0, 1, 0);
-
-      if (mainDown) {
-        puzzle.rotateOnWorldAxis(cameraYAxis, deltaX * mouseSpeed);
-        puzzle.rotateOnWorldAxis(cameraXAxis, deltaY * mouseSpeed);
-      }
-      if (alternateDown) {
-        const getAngle = (p1: { x: number, y: number }, p2: { x: number, y: number }) => {
-          const { x: x1, y: y1 } = getCanvasCoords(p1.x, p1.y);
-          const { x: x2, y: y2 } = getCanvasCoords(p2.x, p2.y);
-
-          const a1 = Math.atan2(y1, x1);
-          const a2 = Math.atan2(y2, x2);
-
-          return a2 - a1;
-        }
-
-        puzzle.rotateOnWorldAxis(cameraZAxis, getAngle({ x: mouseX - deltaX, y: mouseY - deltaY }, { x: mouseX, y: mouseY }));
-      }
-
-      requestRender();
-    }
-
-    const mousedSpace = getMousedSpace(mouseX, mouseY);
-    const prevHighlighted = highlighted.some(a => a.some(b => b));
-    const shouldHighlight = mousedSpace != null && !dragging
-    if ((prevHighlighted && !shouldHighlight) // if we need to reset
-      || (mousedSpace != null && !highlighted[mousedSpace.side][mousedSpace.space]) // or if we need to highlight something
-    ) {
-      for (let side = 0; side < 6; side++) for (let space = 0; space < DEGREE * DEGREE; space++) highlighted[side][space] = false;
-      if (shouldHighlight) highlighted[mousedSpace.side][mousedSpace.space] = true;
-      colorCubes(cubes, arrangement, cubeOrientations, highlighted);
-      requestRender();
-    }
-  }
-}, false);
 
 window.addEventListener('keypress', function (evt) {
   evt.preventDefault();
   if (currentAnimation == null && animations.length == 0 && !mainDown && !alternateDown && !dragging) {
     if (evt.key == 'Enter') {
-      animations.push(getSolutionAnimation());
-      animate();
+      const solutionEle = document.getElementById('solution_text');
+
+      // check if already solved
+      let solved = true;
+      for (let side = 0; side < 6; side++) {
+        for (let space = 0; space < DEGREE * DEGREE; space++) {
+          if (arrangement[side][space] != side) {
+            solved = false;
+            break;
+          }
+        }
+      }
+      if (solved) {
+        solutionEle.innerHTML = "Already solved!";
+      } else {
+        const colorCount = [0, 0, 0, 0, 0, 0];
+        for (let side = 0; side < 6; side++) {
+          for (let space = 0; space < DEGREE * DEGREE; space++) {
+            colorCount[arrangement[side][space]]++;
+          }
+        }
+        let issueFound = false;
+        let issueText = `Invalid Arrangement<br/>(need ${DEGREE * DEGREE} of each color)<br/><br/>Found:`;
+        for (let i = 0; i < 6; i++) {
+          if (colorCount[i] != DEGREE * DEGREE) {
+            issueFound = true;
+            issueText += `<br/>${colorCount[i]} ${Color[i]} space${colorCount[i] == 1 ? '' : 's'}`;
+          }
+        }
+        if (issueFound) {
+          solutionEle.style.pointerEvents = 'auto';
+          solutionEle.innerHTML = issueText;
+        } else {
+          animations.push(getSolutionAnimation());
+          animate();
+        }
+      }
     }
     else if (evt.key == ' ' || evt.key == 'Spacebar') {
-      animations.push(getShuffleAnimation(100, 60, false));
+      animations.push(getShuffleAnimation(Math.floor(100 * Math.log(DEGREE) - 20), DEGREE * 25, false));
       animate();
     }
   }
@@ -728,4 +914,7 @@ function animate() {
   }
 }
 
-requestRender(animate);
+requestRender(() => {
+  document.getElementById('sidebar').style.visibility = 'visible';
+  animate();
+});
