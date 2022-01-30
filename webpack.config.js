@@ -20,6 +20,8 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
   plugins: [
     new HtmlWebpackPlugin({
       title: "Rubik's Cube Solver",
+      template: './src/index.html',
+      inject: 'body',
     }),
   ],
    output: {

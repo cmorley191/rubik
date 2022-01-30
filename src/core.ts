@@ -60,14 +60,15 @@ export function oppositeColor(color: Color): Color {
   return +opposite(+color);
 }
 export const COLORS = [Color.White, Color.Yellow, Color.Green, Color.Blue, Color.Red, Color.Orange];
-export function toShade(color: Color) {
+export function toShade(color: Color, highlighted: boolean = false) {
   switch (color) {
-    case Color.White: return new THREE.Color('white');
-    case Color.Yellow: return new THREE.Color('yellow');
-    case Color.Green: return new THREE.Color('green');
-    case Color.Blue: return new THREE.Color('navy');
-    case Color.Red: return new THREE.Color('darkred');
-    default: return new THREE.Color('darkorange');
+    case Color.White: return !highlighted ? new THREE.Color('white') : new THREE.Color(.8, .8, .8);
+    case Color.Yellow: return !highlighted ? new THREE.Color('yellow') : new THREE.Color('khaki');
+    case Color.Green: return !highlighted ? new THREE.Color('green') : new THREE.Color('limegreen');
+    case Color.Blue: return !highlighted ? new THREE.Color('navy') : new THREE.Color('mediumblue');
+    case Color.Red: return !highlighted ? new THREE.Color('darkred') : new THREE.Color('crimson');
+    case Color.Orange: return !highlighted ? new THREE.Color('darkorange') : new THREE.Color('orange');
+    default: return !highlighted ? new THREE.Color(.25, .25, .25) : new THREE.Color(.4, .4, .4);
   }
 }
 
@@ -187,7 +188,8 @@ export interface Animation {
   teardown: () => void;
 }
 
-export type Arrangement = Color[/*side*/][/*space (0-9, left-to-right and top-to-bottom*/]
+export type Arrangement = Color[/*side*/][/*space (0-9, left-to-right and top-to-bottom*/];
+export type SpacesSettings = boolean[/*side*/][/*space*/];
 export function getStandardSideOrientation(side: Side): Orientation {
   const top = (() => {
     switch (side) {
