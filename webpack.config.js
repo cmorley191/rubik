@@ -27,7 +27,6 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      title: "Rubik's Cube Solver",
       template: './src/index.html',
       inject: 'body',
     }),
