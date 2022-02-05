@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
+import * as helveticaJson from 'three/examples/fonts/helvetiker_regular.typeface.json';
+import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import * as Solution from './solution';
-import { Side, Axis, getUnitVector, Color, COLORS, toShade, Rotation, AnimationTickResult, Animation, Arrangement, printArrangement, rotateArrangement, Move, getAxis, toRotation, MoveType, toNotation, standardOrientation, transform, toLetter, SpacesSettings, Orientation, inspectSide, locateSide, deepCopy } from './core';
-import { RectAreaLight, Vector3 } from 'three';
+import { Side, Axis, getUnitVector, Color, COLORS, toShade, Rotation, AnimationTickResult, Animation, Arrangement, printArrangement, rotateArrangement, Move, getAxis, toRotation, MoveType, toNotation, standardOrientation, transform, toLetter, SpacesSettings, Orientation, inspectSide, locateSide, deepCopy, range } from './core';
 
 const GRAY = toShade(null);
 const BLACK = new THREE.Color(0, 0, 0);
@@ -145,12 +147,69 @@ for (let i = 0; i < DEGREE; i++) for (let j = 0; j < DEGREE; j++) for (let k = 0
   puzzle.add(cube);
 }
 
-const refCubeArr = buildCubes(1);
-const refCube = refCubeArr[0][0][0];
-colorCubes(refCubeArr, COLORS.map(c => [c]), [[[standardOrientation]]], null, 1);
-refCube.translateY(cubeRadius * DEGREE * 1.5);
-refCube.scale.set(0.1 + 0.1 * DEGREE, 0.1 + 0.1 * DEGREE, 0.1 + 0.1 * DEGREE);
+function buildRefCube() {
+  const cubeArr = buildCubes(1);
+  const cube = cubeArr[0][0][0];
+  colorCubes(cubeArr, COLORS.map(c => [c]), [[[standardOrientation]]], null, 1);
+  cube.translateY(cubeRadius * DEGREE * 1.5);
+  cube.scale.set(0.1 + 0.1 * DEGREE, 0.1 + 0.1 * DEGREE, 0.1 + 0.1 * DEGREE);
+
+  const loader = new FontLoader();
+  const font = loader.parse(helveticaJson);
+  range(0, 5).forEach(side => {
+    const text_geometry = new TextGeometry(toLetter(side), {
+      font: font,
+      size: 0.25,
+      height: 0.001,
+      curveSegments: 12,
+      bevelEnabled: false,
+      bevelThickness: 0.1,
+      bevelSize: 0.1,
+      bevelSegments: 0.1
+    });
+    const text_mat = new THREE.MeshBasicMaterial({ color: side == Side.Down ? 0xffffff : 0x000000 });
+    const text = new THREE.Mesh(text_geometry, text_mat);
+
+    // align the letter. Note that its position controls the bottom-left corner of the letter
+    const text_box = new THREE.Box3().setFromObject(text);
+    switch (side) {
+      case Side.Up:
+      case Side.Down: {
+        const sign = side == Side.Up ? 1 : -1;
+        text.rotation.x = -sign * Math.PI / 2;
+        text.position.y = sign * cubeRadius / 2;
+        text.position.x = -(text_box.max.x - text_box.min.x) / 2;
+        text.position.z = sign * (text_box.max.y - text_box.min.y) / 2;
+      } break;
+      case Side.Front:
+      case Side.Back: {
+        const sign = side == Side.Front ? 1 : -1;
+        if (side == Side.Back) { text.rotation.y = Math.PI; }
+        text.position.z = sign * cubeRadius / 2;
+        text.position.x = -sign * (text_box.max.x - text_box.min.x) / 2;
+        text.position.y = -(text_box.max.y - text_box.min.y) / 2
+      } break;
+      case Side.Left:
+      case Side.Right: {
+        const sign = side == Side.Right ? 1 : -1;
+        text.rotation.y = sign * Math.PI / 2;
+        text.position.x = sign * cubeRadius / 2;
+        text.position.z = sign * (text_box.max.x - text_box.min.x) / 2;
+        text.position.y = -(text_box.max.y - text_box.min.y) / 2;
+      } break;
+      default:
+        return;
+    }
+
+    cube.add(text);
+  });
+
+  return cube;
+}
+const refCube = buildRefCube();
 puzzle.add(refCube);
+
+
 
 function getMousedSpace(clientX: number, clientY: number): { side: Side, space: number } | null {
   const raycaster = new THREE.Raycaster();
@@ -846,6 +905,14 @@ window.addEventListener('keypress', function (evt) {
   }
 });
 
+canvas.addEventListener('wheel', function (evt) {
+  if (evt.deltaY != 0) {
+    const pos = new THREE.Spherical().setFromCartesianCoords(camera.position.x, camera.position.y, camera.position.z);
+    pos.radius *= 1 + (evt.deltaY > 0 ? 0.05 : -0.05);
+    camera.position.setFromSpherical(pos);
+    requestRender();
+  }
+});
 
 let currentAnimation: Animation | null = null;
 let lastTick = Date.now();
