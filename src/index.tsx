@@ -2,8 +2,16 @@ import * as THREE from 'three';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
 import * as helveticaJson from 'three/examples/fonts/helvetiker_regular.typeface.json';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
+
+import * as React from 'react';
+import * as ReactDOM from 'react-dom';
+import App from './components/app';
+
 import * as Solution from './solution';
 import { Side, Axis, getUnitVector, Color, COLORS, toShade, Rotation, AnimationTickResult, Animation, Arrangement, printArrangement, rotateArrangement, Move, getAxis, toRotation, MoveType, toNotation, standardOrientation, transform, toLetter, SpacesSettings, Orientation, inspectSide, locateSide, deepCopy, range } from './core';
+
+
+ReactDOM.render((<App />), document.getElementById('root'));
 
 const GRAY = toShade(null);
 const BLACK = new THREE.Color(0, 0, 0);
@@ -208,8 +216,6 @@ function buildRefCube() {
 }
 const refCube = buildRefCube();
 puzzle.add(refCube);
-
-
 
 function getMousedSpace(clientX: number, clientY: number): { side: Side, space: number } | null {
   const raycaster = new THREE.Raycaster();
@@ -856,6 +862,15 @@ canvas.addEventListener('mouseup', function (evt) {
 }, false);
 canvas.addEventListener('contextmenu', evt => evt.preventDefault());
 
+canvas.addEventListener('wheel', function (evt) {
+  if (evt.deltaY != 0) {
+    const pos = new THREE.Spherical().setFromCartesianCoords(camera.position.x, camera.position.y, camera.position.z);
+    pos.radius *= 1 + (evt.deltaY > 0 ? 0.05 : -0.05);
+    camera.position.setFromSpherical(pos);
+    requestRender();
+  }
+});
+
 window.addEventListener('keypress', function (evt) {
   evt.preventDefault();
   if (currentAnimation == null && animations.length == 0 && !mainDown && !alternateDown && !dragging) {
@@ -905,14 +920,6 @@ window.addEventListener('keypress', function (evt) {
   }
 });
 
-canvas.addEventListener('wheel', function (evt) {
-  if (evt.deltaY != 0) {
-    const pos = new THREE.Spherical().setFromCartesianCoords(camera.position.x, camera.position.y, camera.position.z);
-    pos.radius *= 1 + (evt.deltaY > 0 ? 0.05 : -0.05);
-    camera.position.setFromSpherical(pos);
-    requestRender();
-  }
-});
 
 let currentAnimation: Animation | null = null;
 let lastTick = Date.now();
