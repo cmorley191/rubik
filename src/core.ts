@@ -60,15 +60,15 @@ export function oppositeColor(color: Color): Color {
   return +opposite(+color);
 }
 export const COLORS = [Color.White, Color.Yellow, Color.Green, Color.Blue, Color.Red, Color.Orange];
-export function toShade(color: Color, highlighted: boolean = false) {
+export function toShade({ color, highlighted }: { color: Color, highlighted: boolean }) {
   switch (color) {
-    case Color.White: return !highlighted ? new THREE.Color('white') : new THREE.Color(.85, .85, .85);
-    case Color.Yellow: return !highlighted ? new THREE.Color('yellow') : new THREE.Color('gold');
-    case Color.Green: return !highlighted ? new THREE.Color('green') : new THREE.Color('limegreen');
-    case Color.Blue: return !highlighted ? new THREE.Color('navy') : new THREE.Color('mediumblue');
-    case Color.Red: return !highlighted ? new THREE.Color('darkred') : new THREE.Color('red');
-    case Color.Orange: return !highlighted ? new THREE.Color('darkorange') : new THREE.Color('orange');
-    default: return !highlighted ? new THREE.Color(.25, .25, .25) : new THREE.Color(.4, .4, .4);
+    case Color.White: return !highlighted ? new THREE.Color(0xFFFFFF) : new THREE.Color(0xDDDDDD);
+    case Color.Yellow: return !highlighted ? new THREE.Color(0xFFFF00) : new THREE.Color(0xFFD700);
+    case Color.Green: return !highlighted ? new THREE.Color(0x008000) : new THREE.Color(0x32CD32);
+    case Color.Blue: return !highlighted ? new THREE.Color(0x000080) : new THREE.Color(0x0000CD);
+    case Color.Red: return !highlighted ? new THREE.Color(0x8B0000) : new THREE.Color(0xFF0000);
+    case Color.Orange: return !highlighted ? new THREE.Color(0xFF8C00) : new THREE.Color(0xFFA500);
+    default: return !highlighted ? new THREE.Color(0x404040) : new THREE.Color(0x666666);
   }
 }
 

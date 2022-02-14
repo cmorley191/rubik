@@ -1,8 +1,20 @@
 import * as React from "react";
 import { Global, css } from '@emotion/react';
 import Sidebar from './sidebar';
+import { SimulationProps, SimulationState, Simulation } from './simulation/react_simulation';
 
-export default class App extends React.Component {
+export interface AppProps {
+  degree: number,
+};
+
+export interface AppState {
+};
+
+export default class App extends React.Component<AppProps> {
+  constructor(props: SimulationProps) {
+    super(props);
+  }
+
   render() {
     return (
       <div id="app">
@@ -18,8 +30,12 @@ export default class App extends React.Component {
             background-color: black;
           }
         `} />
+        <Simulation degree={this.props.degree} />
         <Sidebar />
       </div>
     );
   }
 }
+
+//<Tester />
+//
