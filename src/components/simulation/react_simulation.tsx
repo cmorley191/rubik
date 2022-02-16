@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useRef, useState } from "react";
 import * as ReactDOM from 'react-dom';
-import { Canvas, ReactThreeFiber, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, ReactThreeFiber, RenderCallback, useFrame, useThree } from '@react-three/fiber';
 import { EmotionJSX } from "@emotion/react/types/jsx-namespace";
 
 import * as THREE from "three";
@@ -50,6 +50,17 @@ function positionsEqual(pos1: { x: number, y: number, z: number }, pos2: { x: nu
   return (pos1 == pos2) || (pos1 != null && pos2 != null && pos1.x == pos2.x && pos1.y == pos2.y && pos1.z == pos2.z);
 }
 
+function sideVisibleOnPosition(degree: number, side: Side, pos: { x: number, y: number, z: number }) {
+  switch (side) {
+    case Side.Right: return pos.x == degree - 1;
+    case Side.Left: return pos.x == 0;
+    case Side.Up: return pos.y == degree - 1;
+    case Side.Down: return pos.y == 0;
+    case Side.Front: return pos.z == degree - 1;
+    case Side.Back: return pos.z == 0;
+  }
+}
+
 type PieceBasicProps = {
   mesh: THREE.Mesh;
 }
@@ -85,29 +96,15 @@ type PuzzlePieceProps = {
   registerFunctions?: (functions: PuzzlePieceFunctions) => void;
 };
 const PuzzlePiece = ({ threeProps = {}, children, degree, pieceRadius, x, y, z, puzzleColors, registerFunctions = (fs => { }) }: React.PropsWithChildren<PuzzlePieceProps>) => {
+  const position = { x, y, z };
   const colorsFromPuzzleColors = (state: PuzzleColors) => {
-    const colors = [];
-    const getColor = (space: { side: Side, space: number }) => state[space.side][space.space];
-
-    if (x == degree - 1) colors.push(getColor(positionToSpace(degree, Side.Right, { x, y, z })));
-    else colors.push(null); // becomes gray
-
-    if (x == 0) colors.push(getColor(positionToSpace(degree, Side.Left, { x, y, z })));
-    else colors.push(null);
-
-    if (y == degree - 1) colors.push(getColor(positionToSpace(degree, Side.Up, { x, y, z })));
-    else colors.push(null);
-
-    if (y == 0) colors.push(getColor(positionToSpace(degree, Side.Down, { x, y, z })));
-    else colors.push(null);
-
-    if (z == degree - 1) colors.push(getColor(positionToSpace(degree, Side.Front, { x, y, z })));
-    else colors.push(null);
-
-    if (z == 0) colors.push(getColor(positionToSpace(degree, Side.Back, { x, y, z })));
-    else colors.push(null);
-
-    return colors;
+    return range(0, 5).map(side => {
+      if (sideVisibleOnPosition(degree, side, position)) {
+        const space = positionToSpace(degree, side, position);
+        return state[space.side][space.space];
+      }
+      else return null; // becomes gray
+    });
   };
 
   const [colors, setColors] = useState(() => colorsFromPuzzleColors(puzzleColors));
@@ -172,9 +169,7 @@ const PuzzlePiece = ({ threeProps = {}, children, degree, pieceRadius, x, y, z, 
       });
     },
     setHighlighting: (sideToHighlight) => {
-      //console.log(`${x},${y},${z} Set highlighting: ${highlightedSide}`);
       if ((sideToHighlight == null && highlightedSide != null) || (sideToHighlight != null && highlightedSide != sideToHighlight)) {
-        console.log(`highlighting ${highlightedSide} -> ${sideToHighlight}`);
         setColorValues(currentVals => {
           const newVals = currentVals.slice(); // copy
 
@@ -204,9 +199,12 @@ const PuzzlePiece = ({ threeProps = {}, children, degree, pieceRadius, x, y, z, 
   });
 
   const [geo, geoRef] = useState<THREE.BufferGeometry>();
-  if (x == 1 && y == 0 && z == 2) useFrame(() => {
-    console.log(geo.getAttribute('color').array[48]);
+  React.useLayoutEffect(() => {
+    if (geo) {
+      geo.setAttribute('color', new Float32BufferAttribute(colorValues, 3));
+    }
   });
+
   const [posX, posY, posZ] = [x, y, z].map(v => (v - ((degree - 1) / 2)) * pieceRadius)
   return (
     <mesh
@@ -217,9 +215,7 @@ const PuzzlePiece = ({ threeProps = {}, children, degree, pieceRadius, x, y, z, 
       <boxBufferGeometry
         ref={geoRef}
         args={[pieceRadius, pieceRadius, pieceRadius]}
-      >
-        <bufferAttribute attachObject={['attributes', 'color']} array={colorValues} itemSize={3} count={colorsPerFace * 6} />
-      </boxBufferGeometry>
+      />
       <meshBasicMaterial vertexColors={true} />
       <lineSegments renderOrder={1}>
         <edgesGeometry args={[geo]} />
@@ -276,7 +272,9 @@ const Puzzle = ({ threeProps = {}, children, degree, pieceRadius, state, animati
       const intersections = [];
       for (let x = 0; x < degree; x++) for (let y = 0; y < degree; y++) for (let z = 0; z < degree; z++) {
         if (pieceGrid[x][y][z].functions.current != null) {
-          intersections.push(...pieceGrid[x][y][z].functions.current.checkIntersection(ray).map(i => ({ pos: { x, y, z }, ...i })));
+          intersections.push(...
+            pieceGrid[x][y][z].functions.current.checkIntersection(ray)
+              .map(i => ({ pos: { x, y, z }, ...i })));
         }
       }
 
@@ -284,6 +282,7 @@ const Puzzle = ({ threeProps = {}, children, degree, pieceRadius, state, animati
 
       intersections.sort((int1, int2) => int1.distance - int2.distance);
       const intersection = intersections[0];
+      if (!sideVisibleOnPosition(degree, intersection.side, intersection.pos)) return null;
 
       const [sideX, sideY] = (() => {
         switch (intersection.side) {
@@ -318,16 +317,16 @@ const Puzzle = ({ threeProps = {}, children, degree, pieceRadius, state, animati
     },
 
     setHighlighting: function (newHighlightedSpace) {
-      if (highlightedSpace == newHighlightedSpace) return;
+      if ((highlightedSpace == null && newHighlightedSpace == null) || (highlightedSpace != null && newHighlightedSpace != null && highlightedSpace.space == newHighlightedSpace.space && highlightedSpace.side == newHighlightedSpace.side)) return;
       const pos = highlightedSpace == null ? null : spaceToPosition(degree, highlightedSpace);
       const newPos = newHighlightedSpace == null ? null : spaceToPosition(degree, newHighlightedSpace);
       if (newPos != null && pieceGrid[newPos.x][newPos.y][newPos.z].functions.current != null) {
         pieceGrid[newPos.x][newPos.y][newPos.z].functions.current.setHighlighting(newHighlightedSpace.side);
-      }
+        setHighlightedSpace(newHighlightedSpace);
+      } else setHighlightedSpace(null);
       if (pos != null && !positionsEqual(pos, newPos) && pieceGrid[pos.x][pos.y][pos.z].functions.current != null) {
         pieceGrid[pos.x][pos.y][pos.z].functions.current.setHighlighting(null);
       }
-      setHighlightedSpace(newHighlightedSpace);
     }
   });
 
@@ -400,10 +399,10 @@ const Puzzle = ({ threeProps = {}, children, degree, pieceRadius, state, animati
 
 const RefCube = ({ degree, pieceRadius }: { degree: number, pieceRadius: number }) => {  // setup and add to puzzle
   const sideLetters = range(0, 5).map(side => {
-    // Need to construct this imperatively since its position/rotation depends on a bounding box around the constructed mesh.
-    // Since the ref cube never changes, there shouldn't be any issues.
-    const [_, meshRef] = useState<THREE.Mesh>(() => {
-      const geometry = new TextGeometry(toLetter(side), {
+    const meshRef = useRef<THREE.Mesh>();
+
+    const geo = React.useMemo(() => {
+      return new TextGeometry(toLetter(side), {
         font: helvetica,
         size: 0.25,
         height: 0.001,
@@ -413,57 +412,64 @@ const RefCube = ({ degree, pieceRadius }: { degree: number, pieceRadius: number 
         bevelSize: 0.1,
         bevelSegments: 0.1
       });
-      const material = new THREE.MeshBasicMaterial({ color: side == Side.Down ? 0xffffff : 0x000000 });
-      const text = new THREE.Mesh(geometry, material);
+    }, []);
 
-      // align the letter. Note that its position controls the bottom-left corner of the letter
-      const boundingBox = new THREE.Box3().setFromObject(text);
-      switch (side) {
-        case Side.Up:
-        case Side.Down: {
-          const sign = side == Side.Up ? 1 : -1;
-          text.rotation.x = -sign * Math.PI / 2;
-          text.position.y = sign * pieceRadius / 2;
-          text.position.x = -(boundingBox.max.x - boundingBox.min.x) / 2;
-          text.position.z = sign * (boundingBox.max.y - boundingBox.min.y) / 2;
-        } break;
-        case Side.Front:
-        case Side.Back: {
-          const sign = side == Side.Front ? 1 : -1;
-          if (side == Side.Back) { text.rotation.y = Math.PI; }
-          text.position.z = sign * pieceRadius / 2;
-          text.position.x = -sign * (boundingBox.max.x - boundingBox.min.x) / 2;
-          text.position.y = -(boundingBox.max.y - boundingBox.min.y) / 2
-        } break;
-        case Side.Left:
-        case Side.Right: {
-          const sign = side == Side.Right ? 1 : -1;
-          text.rotation.y = sign * Math.PI / 2;
-          text.position.x = sign * pieceRadius / 2;
-          text.position.z = sign * (boundingBox.max.x - boundingBox.min.x) / 2;
-          text.position.y = -(boundingBox.max.y - boundingBox.min.y) / 2;
-        } break;
+    React.useLayoutEffect(() => {
+      if (meshRef.current) {
+        const text = meshRef.current;
+        // align the letter. Note that its position controls the bottom-left corner of the letter
+        const boundingBox = new THREE.Box3().setFromObject(text);
+        switch (side) {
+          case Side.Up:
+          case Side.Down: {
+            const sign = side == Side.Up ? 1 : -1;
+            text.rotation.x = -sign * Math.PI / 2;
+            text.position.y = sign * pieceRadius / 2;
+            text.position.x = -(boundingBox.max.x - boundingBox.min.x) / 2;
+            text.position.z = sign * (boundingBox.max.y - boundingBox.min.y) / 2;
+          } break;
+          case Side.Front:
+          case Side.Back: {
+            const sign = side == Side.Front ? 1 : -1;
+            if (side == Side.Back) { text.rotation.y = Math.PI; }
+            text.position.z = sign * pieceRadius / 2;
+            text.position.x = -sign * (boundingBox.max.x - boundingBox.min.x) / 2;
+            text.position.y = -(boundingBox.max.y - boundingBox.min.y) / 2
+          } break;
+          case Side.Left:
+          case Side.Right: {
+            const sign = side == Side.Right ? 1 : -1;
+            text.rotation.y = sign * Math.PI / 2;
+            text.position.x = sign * pieceRadius / 2;
+            text.position.z = sign * (boundingBox.max.x - boundingBox.min.x) / 2;
+            text.position.y = -(boundingBox.max.y - boundingBox.min.y) / 2;
+          } break;
+        }
       }
-      return text;
     });
 
     return (
       <mesh
         key={side}
         ref={meshRef}
-      />
+        geometry={geo}
+      >
+        <meshBasicMaterial color={side == Side.Down ? 0xffffff : 0x000000} />
+      </mesh>
     );
   });
 
   const refCubePuzzleColors: PuzzleColors = range(0, 5).map(side => [side]);
+  const scale = 0.1 + 0.1 * degree;
 
   return (
     <PuzzlePiece
       threeProps={{
-        position: [0, pieceRadius * degree * 1.5, 0]
+        position: [0, pieceRadius * degree * 1.5, 0],
+        scale: [scale, scale, scale],
       }}
       degree={1}
-      pieceRadius={pieceRadius * (0.1 + 0.1 * degree)}
+      pieceRadius={pieceRadius}
       x={0} y={0} z={0}
       puzzleColors={refCubePuzzleColors}
     >
@@ -504,13 +510,7 @@ const CameraHook = ({ state }: { state: SimulationState }) => {
   const refHook = useRef<THREE.Mesh>();
   useThree(({ camera }) => {
     if (refHook.current) {
-      const cameraRotationalAngle = -20; // facing rotation around y-axis (clockwise) (degrees)
-      const cameraPolarAngle = -15; // facing rotation around x-axis (degrees)
-      const cameraPosition = new THREE.Spherical(state.cameraDistance, (90 + cameraPolarAngle) * Math.PI / 180, -cameraRotationalAngle * Math.PI / 180);
-      camera.position.setFromSpherical(cameraPosition);
-      camera.rotation.x = -(Math.PI / 2 - cameraPosition.phi);
-      camera.rotation.y = cameraPosition.theta;
-
+      camera.position.z = state.cameraDistance;
       (camera as PerspectiveCamera).aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
     }
@@ -521,14 +521,72 @@ const CameraHook = ({ state }: { state: SimulationState }) => {
   )
 };
 
+const dragThreshold = 2;
+type MousePressEventData = { isDown: boolean, press: boolean, release: boolean, click: boolean, drag: boolean }
 type MouseHandlers = {
-  onMouseMove: (pointer: THREE.Raycaster) => void;
+  onMouse?: (pointer: THREE.Raycaster, event: {
+    deltaX: number,
+    deltaY: number,
+    main: MousePressEventData,
+    alternate: MousePressEventData,
+  }) => ({ cursor?: string } | void);
+  onWheel?: (down: boolean,) => void;
 };
 const MouseHandlersHook = (props: MouseHandlers) => {
   const refHook = useRef<THREE.Mesh>();
+
+  const [mainDownRef, alternateDownRef, mainPressRef, alternatePressRef, draggingRef] = range(1, 5).map(x => useRef<boolean>(false));
+  const [clientXRef, clientYRef, dragSrcX, dragSrcY] = range(1, 4).map(x => useRef<number>(null));
+
+  const updateMouseData = (evt: MouseEvent, pressEvent: boolean) => {
+    const deltaX = clientXRef.current == null ? 0 : evt.clientX - clientXRef.current;
+    const deltaY = clientYRef.current == null ? 0 : evt.clientY - clientYRef.current;
+    clientXRef.current = evt.clientX;
+    clientYRef.current = evt.clientY;
+    if (mainDownRef.current || alternateDownRef.current) {
+      const dragDeltaX = clientXRef.current - dragSrcX.current;
+      const dragDeltaY = clientYRef.current - dragSrcY.current;
+      if (dragDeltaX * dragDeltaX + dragDeltaY * dragDeltaY >= dragThreshold * dragThreshold) {
+        draggingRef.current = true;
+      }
+    }
+
+    const prevMainDown = mainDownRef.current;
+    const prevAlternateDown = alternateDownRef.current;
+    mainDownRef.current = (evt.buttons & 1) != 0;
+    alternateDownRef.current = (evt.buttons & 2) != 0;
+    if (!prevMainDown) mainPressRef.current = mainDownRef.current;
+    if (!prevAlternateDown) alternatePressRef.current = alternateDownRef.current;
+    if (!(prevMainDown || prevAlternateDown) && (mainDownRef.current || alternateDownRef.current)) {
+      dragSrcX.current = clientXRef.current;
+      dragSrcY.current = clientYRef.current;
+    }
+    const result = {
+      deltaX,
+      deltaY,
+      main: {
+        isDown: mainDownRef.current,
+        press: pressEvent && !prevMainDown && mainDownRef.current,
+        release: pressEvent && mainPressRef.current && prevMainDown && !mainDownRef.current,
+        click: !draggingRef.current && pressEvent && mainPressRef.current && prevMainDown && !mainDownRef.current,
+        drag: draggingRef.current && prevMainDown
+      },
+      alternate: {
+        isDown: alternateDownRef.current,
+        press: pressEvent && !prevAlternateDown && alternateDownRef.current,
+        release: pressEvent && alternatePressRef.current && prevAlternateDown && !alternateDownRef.current,
+        click: !draggingRef.current && pressEvent && alternatePressRef.current && prevAlternateDown && !alternateDownRef.current,
+        drag: draggingRef.current && prevAlternateDown
+      }
+    };
+    if (!mainDownRef.current && !alternateDownRef.current) draggingRef.current = false;
+    return result;
+  }
+
   useThree(({ gl, camera }) => {
     if (refHook.current) {
-      const rendererRect = gl.domElement.getBoundingClientRect();
+      const canvas = gl.domElement;
+      const rendererRect = canvas.getBoundingClientRect();
       const getRaycaster = (clientX: number, clientY: number) => {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera({
@@ -538,10 +596,28 @@ const MouseHandlersHook = (props: MouseHandlers) => {
         return raycaster;
       };
 
-      gl.domElement.addEventListener('mousemove', (evt) => {
+      canvas.addEventListener('mousemove', (evt) => {
         evt.preventDefault();
-        props.onMouseMove(getRaycaster(evt.clientX, evt.clientY));
+        const res = props.onMouse(getRaycaster(evt.clientX, evt.clientY), updateMouseData(evt, false));
+        if (typeof res === 'object' && res.cursor) canvas.style.cursor = res.cursor;
       });
+      canvas.addEventListener('mousedown', (evt) => {
+        evt.preventDefault();
+        const res = props.onMouse(getRaycaster(evt.clientX, evt.clientY), updateMouseData(evt, true));
+        if (typeof res === 'object' && res.cursor) canvas.style.cursor = res.cursor;
+      });
+      canvas.addEventListener('mouseup', (evt) => {
+        evt.preventDefault();
+        const res = props.onMouse(getRaycaster(evt.clientX, evt.clientY), updateMouseData(evt, true));
+        if (typeof res === 'object' && res.cursor) canvas.style.cursor = res.cursor;
+      });
+
+      canvas.addEventListener('wheel', function (evt) {
+        evt.preventDefault();
+        if (evt.deltaY != 0) props.onWheel(evt.deltaY > 0);
+      });
+
+      canvas.addEventListener('contextmenu', evt => evt.preventDefault());
     }
   });
 
@@ -550,8 +626,26 @@ const MouseHandlersHook = (props: MouseHandlers) => {
   )
 };
 
+const FrameHook = ({ callback }: { callback: RenderCallback }) => {
+  const refHook = useRef<THREE.Mesh>();
+
+  useFrame((...params) => {
+    if (refHook.current) {
+      callback(...params);
+    }
+  });
+
+  return (
+    <mesh ref={refHook} />
+  )
+}
+
+const mouseSpeed = 6 / 400; // radians per pixel
 const SimulationCanvas = ({ props, state, pieceRadius }: { props: SimulationProps, state: SimulationState, pieceRadius: number }) => {
   const puzzleFunctionsRef = useRef<PuzzleFunctions>(null);
+  const puzzleRotationRef = useRef<THREE.Euler>(new THREE.Euler(15 * Math.PI / 180, -20 * Math.PI / 180, 0));
+  const puzzleRef = useRef<THREE.Group>();
+  const puzzleColorsRef = useRef(state.puzzle);
 
   return (
     <Canvas
@@ -561,22 +655,54 @@ const SimulationCanvas = ({ props, state, pieceRadius }: { props: SimulationProp
       <RendererHook />
       <CameraHook state={state} />
       <MouseHandlersHook
-        onMouseMove={(ray) => {
-          if (!puzzleFunctionsRef.current) return;
-          const mousedSpace = puzzleFunctionsRef.current.checkIntersection(ray);
-          puzzleFunctionsRef.current.setHighlighting(mousedSpace);
+        onMouse={(ray, event) => {
+          if (event.main.drag) {
+            if (puzzleFunctionsRef.current) {
+              puzzleFunctionsRef.current.setHighlighting(null);
+            }
+            puzzleRotationRef.current.y += event.deltaX * mouseSpeed;
+            puzzleRotationRef.current.x += event.deltaY * mouseSpeed;
+            return { cursor: "grabbing" };
+          } else {
+            if (puzzleFunctionsRef.current) {
+              const mousedSpace = puzzleFunctionsRef.current.checkIntersection(ray);
+              if (mousedSpace != null) {
+                if (event.main.click || event.alternate.click) {
+                  puzzleColorsRef.current[mousedSpace.side][mousedSpace.space] = (puzzleColorsRef.current[mousedSpace.side][mousedSpace.space] + (event.main.click ? 1 : 5)) % 6;
+                  puzzleFunctionsRef.current.setHighlighting(null);  // double function call not working!
+                  puzzleFunctionsRef.current.setPuzzleColors(puzzleColorsRef.current)
+                } else {
+                  puzzleFunctionsRef.current.setHighlighting(mousedSpace);
+                }
+                return { cursor: "pointer" };
+              }
+              puzzleFunctionsRef.current.setHighlighting(null);
+              return { cursor: "default" };
+            }
+          }
         }}
       />
       <ambientLight />
       <Puzzle
+        threeProps={{
+          ref: puzzleRef,
+          rotation: puzzleRotationRef.current
+        }}
         degree={props.degree}
         pieceRadius={pieceRadius}
-        state={state.puzzle}
+        state={puzzleColorsRef.current}
         animationState={state.currentAnimation}
         registerFunctions={(fs) => { puzzleFunctionsRef.current = fs; }}
       >
         <RefCube degree={props.degree} pieceRadius={pieceRadius} />
       </Puzzle>
+      <FrameHook callback={() => {
+        if (puzzleRef.current) {
+          if (!puzzleRef.current.rotation.equals(puzzleRotationRef.current)) {
+            puzzleRef.current.rotation.set(puzzleRotationRef.current.x, puzzleRotationRef.current.y, puzzleRotationRef.current.z);
+          }
+        }
+      }} />
     </Canvas >
   );
 };
