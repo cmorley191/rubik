@@ -1339,7 +1339,9 @@ export function* solve(arr: Arrangement, degree: number) {
 
             if (!topRightPositioned()) {
               /* couldn't find it, fix with moves */
-              yield { text: `1st Corner`, level: 3 };
+              if (attempt2 == 0) {
+                yield { text: `1st Corner`, level: 3 };
+              }
 
               //printArrangement(arrangement, degree);
               console.log(`top right not positioned (looking at ${toLetter(posPerspective.front)})`);

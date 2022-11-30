@@ -1,10 +1,4 @@
-<!DOCTYPE html>
-<html>
-  <head> 
-    <title>cmorley191: Rubik's Cube Solver</title>
-    <meta charset="utf-8">
-    <style>
-      ::-webkit-scrollbar { background: black }
+<!doctype html><html><head><title>cmorley191: Rubik's Cube Solver</title><meta charset="utf-8"><style>::-webkit-scrollbar { background: black }
       ::-webkit-scrollbar-track { background: #202020; }
       ::-webkit-scrollbar-thumb { background: white; }
       ::-webkit-scrollbar-thumb:hover { background: #C0C0C0; }
@@ -24,7 +18,7 @@
         margin-bottom: 20px; /* spacing */
       }
 
-      #sidebar * button {
+      #cubesize_buttons * {
         pointer-events: auto;
         margin-right: 5px; /* spacing between buttons */
         background-color: #202020;
@@ -52,25 +46,25 @@
         margin-left: 0px;
         margin-right: 10px;
       }
-    </style>
-  </head>
-  <body style="margin: 0px; background-color: black;">
-    <div id="sidebar">
-      <div>
-        <button onclick="window.location=`${window.location.href.split('?')[0]}?s=2`;">
-            2x2
-        </button>
-        <button class='degreeButton' onclick="window.location=`${window.location.href.split('?')[0]}?s=3`;">
-            3x3
-        </button>
-        <button class='degreeButton' onclick="window.location=`${window.location.href.split('?')[0]}?s=4`;">
-            4x4
-        </button>
-      </div>
-      <img id="controls" style="margin-left: 0px; max-width: 60%" src=b940e13a9b00475412ab.png />
-      <div id="solution_container" class="solution" >
-        <p id="solution_text" class="solution" ></p>
-      </div>
-    </div>
-  <script defer src="index.bundle.js"></script></body>
-</html>
+
+      #footer {
+        position: absolute;
+        bottom: 10px;
+        width: 100%;
+        text-align: center;
+        color: white;
+        background-color: rgba(0, 0, 0, 0.7);
+      }
+
+      a:link {
+        color: skyblue;
+      }
+      a:visited {
+        color: darkgreen;
+      }
+      a:hover {
+        color: lightskyblue;
+      }
+      a:active {
+        color: green;
+      }</style></head><body style="margin: 0px; background-color: black;"><div id="sidebar"><div id="cubesize_buttons"><span style="color: white;">Cube size:</span> <button onclick="window.location=`${window.location.href.split('?')[0]}?s=2`;">2x2</button> <button class="degreeButton" onclick="window.location=`${window.location.href.split('?')[0]}?s=3`;">3x3</button> <button class="degreeButton" onclick="window.location=`${window.location.href.split('?')[0]}?s=4`;">4x4</button></div><img id="controls" style="margin-left: 0px; max-width: 65%" src="94b05b0b428956afc84a.png"/><div id="solution_container" class="solution"><p id="solution_text" class="solution"></p></div></div><div id="footer"><span>Rubik's Cube Solver (beginner method)</span><div style="height:5px"></div><span style="font-size: 80%">by Charlie Morley: <a href="https://github.com/cmorley191/rubik">github.com/cmorley191/rubik</a></span></div><script defer="defer" src="index.bundle.js"></script></body></html>

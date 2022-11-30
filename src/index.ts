@@ -3,7 +3,7 @@ import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
 import * as helveticaJson from 'three/examples/fonts/helvetiker_regular.typeface.json';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import * as Solution from './solution';
-import { Side, Axis, getUnitVector, Color, COLORS, toShade, Rotation, AnimationTickResult, Animation, Arrangement, printArrangement, rotateArrangement, Move, getAxis, toRotation, MoveType, toNotation, standardOrientation, transform, toLetter, SpacesSettings, Orientation, inspectSide, locateSide, deepCopy, range } from './core';
+import { Side, Axis, getUnitVector, Color, COLORS, toShade, Rotation, AnimationTickResult, Animation, Arrangement, printArrangement, rotateArrangement, Move, getAxis, toRotation, MoveType, toNotation, standardOrientation, transform, toLetter, SpacesSettings, Orientation, inspectSide, locateSide, deepCopy, range, opposite, reverse } from './core';
 
 const GRAY = toShade(null);
 const BLACK = new THREE.Color(0, 0, 0);
@@ -458,9 +458,14 @@ function extendAnimation(an: Animation, preSetup: () => void = undefined, preTic
   }
 }
 
-const animations: Animation[] = [];
+let animations: Animation[] = [];
+let currentAnimation: Animation | null = null;
+let paused: boolean = false;
+let lastTick = Date.now();
 
-function getSolutionAnimation(followup: Animation | null = null): Animation {
+let undoSolutionAnimations: { undo: Animation, redo: Animation }[] = [];
+let arrangementNeedsNewSolution = true;
+function getSolutionAnimation(startPaused: boolean = undefined, followup: Animation | null = null): Animation {
   return {
     setup() {
       printArrangement(arrangement, DEGREE);
@@ -481,12 +486,14 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
         let headerLevel = -1;
         const halftab = "&ensp;";
         const tab = `${halftab}${halftab}`;
-        const sectionBreakText = '<div style="height:13px;" ></div>';
+        const sectionBreakText = (id: number) => `<div id="solution_section_break_${id}" style="height:13px;" ></div>`;
         let indent = tab;
         let moveLineStarted = false;
         let moveLineCount = 0;
+        let moveLineWideCount = 0;  // 3-character (except thin "'" chars) notations like "Dd2"
+        let headerCount = 0;
         let sectionBreak = false;
-
+        let sectionBreakCount = 0;
 
         while (moveCount < 2000) {  // no cube we have solve instructions for takes this long.
           const nextMove = moveGen.next();
@@ -511,9 +518,10 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
               headerLevel = -1;
               indent = "";
               for (let i = 0; i < nextMoveValue.level; i++) indent += tab;
-              if (!sectionBreak) solutionEle.innerHTML += sectionBreakText;
+              if (!sectionBreak) { solutionEle.innerHTML += sectionBreakText(sectionBreakCount); sectionBreakCount++; }
               sectionBreak = true;
               moveLineCount = 0;
+              moveLineWideCount = 0;
               moveLineStarted = false;
             }
           } else {
@@ -523,15 +531,19 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
             let printedHeader = false;
             if (headers.length != 0) {
               printedHeader = true;
-              if (!sectionBreak) solutionEle.innerHTML += sectionBreakText
+              if (!sectionBreak) { solutionEle.innerHTML += sectionBreakText(sectionBreakCount); sectionBreakCount++; }
 
               let notFirstHeader = false;
-              headers.forEach(header => {
+              headers.forEach((header, index) => {
                 if (header.level == 1) printArrangement(validationArrangement, DEGREE);
                 indent = "";
                 for (let i = 0; i < header.level; i++) indent += tab;
                 console.log(header.text);
-                solutionEle.innerHTML += `${notFirstHeader ? '<br />' : ''}${indent}${header.text}`;
+                const lastHeader = index == headers.length - 1;
+                solutionEle.innerHTML += `${notFirstHeader ? '<br />' : ''}${indent}<span${lastHeader ? ` id="solution_header_${headerCount}"` : ''}>${header.text}</span>`;
+                if (lastHeader) {
+                  headerCount += 1;
+                }
                 notFirstHeader = true;
                 indent += tab;
               });
@@ -539,28 +551,93 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
             }
 
 
-            if (printedHeader || !moveLineStarted || moveLineCount == 8) {
+            if (printedHeader || !moveLineStarted || moveLineCount == 8 || (moveLineWideCount >= 2 && moveLineCount == 4) || (moveLineWideCount >= 3 && moveLineCount > 4)) {
               if (!sectionBreak || printedHeader) solutionEle.innerHTML += `<br />`;
               solutionEle.innerHTML += `${indent}`;
               moveLineStarted = true;
               moveLineCount = 0;
+              moveLineWideCount = 0;
             }
             moveLineCount++;
             sectionBreak = false;
 
             const moveString = toNotation(transform(nextMoveValue, standardOrientation), DEGREE);
+            if (moveString.replace("'", "").length >= 3) moveLineWideCount++;
             solutionEle.innerHTML += `<span class="solution_step" id="solution_step_${iMove}">${moveString}</span>`;
             console.log(moveString);
 
             const rotation = toRotation(nextMoveValue, DEGREE);
             rotateArrangement(rotation, validationArrangement, DEGREE);
-            animations.push(
-              extendAnimation(
+            const moveHeaderId = headerCount - 1;
+            const moveSectionBreakId = sectionBreakCount;
+            let getAnimation: (() => Animation) = null;
+            let getUndoAnimation: (() => Animation) = null;
+            getAnimation = (
+              () => extendAnimation(
                 getRotateAnimation({ rotation, speed: 10 }),
-                () => { console.log(moveString); document.getElementById(`solution_step_${iMove}`).style.color = 'red'; },
+                () => {
+                  console.log(moveString);
+                  const element = document.getElementById(`solution_step_${iMove}`);
+                  element.scrollIntoView({ block: 'nearest' });
+                  document.getElementById(`solution_header_${moveHeaderId}`).scrollIntoView({ block: 'nearest' });
+                  document.getElementById(`solution_section_break_${moveSectionBreakId}`).scrollIntoView({ block: 'nearest' });
+                  element.scrollIntoView({ block: 'nearest' });
+                },
                 undefined,
-                () => { document.getElementById(`solution_step_${iMove}`).style.color = ''; }));
+                () => {
+                  undoSolutionAnimations.push({ undo: getUndoAnimation(), redo: getAnimation() });
 
+                  // teardown this move's highlighting
+                  const element = document.getElementById(`solution_step_${iMove}`);
+                  element.style.color = '';
+                  if (iMove + 1 < moveCount) { // moveCount is non-const; will have the full moveCount by the time this lambda is called
+                    // set up next move's highlighting
+                    const nextElement = document.getElementById(`solution_step_${iMove + 1}`);
+                    nextElement.style.color = 'red';
+                    // no way to know whether next move is after under a new header or not;
+                    //  hacky alternative to scroll it into view is to scroll current move since header would be between current and next move
+                    nextElement.scrollIntoView({ block: 'nearest' });
+                    document.getElementById(`solution_header_${moveHeaderId}`).scrollIntoView({ block: 'nearest' });
+                    element.scrollIntoView({ block: 'nearest' });
+                    document.getElementById(`solution_section_break_${moveSectionBreakId}`).scrollIntoView({ block: 'nearest' });
+                    nextElement.scrollIntoView({ block: 'nearest' });
+                  }
+                  else {
+                    // scroll all the way down (scroll last move to top of view) to show there's no more moves
+                    element.scrollIntoView({ block: 'start' });
+                  }
+                }
+              )
+            );
+            getUndoAnimation = (
+              () => extendAnimation(
+                getRotateAnimation({ rotation: { ...rotation, clockwise: !rotation.clockwise }, speed: 10 }),
+                () => {
+                  // setup this move's highlighting
+                  const element = document.getElementById(`solution_step_${iMove}`);
+                  element.style.color = 'red';
+                  element.scrollIntoView({ block: 'nearest' });
+                  document.getElementById(`solution_header_${moveHeaderId}`).scrollIntoView({ block: 'nearest' });
+                  document.getElementById(`solution_section_break_${moveSectionBreakId}`).scrollIntoView({ block: 'nearest' });
+                  element.scrollIntoView({ block: 'nearest' });
+                  if (iMove + 1 < moveCount) { // moveCount is non-const; will have the full moveCount by the time this lambda is called
+                    // teardown next move's highlighting
+                    document.getElementById(`solution_step_${iMove + 1}`).style.color = '';
+                  }
+                },
+                undefined,
+                () => {
+                }
+              )
+            );
+
+            animations.push(getAnimation());
+            // setup first move's highlighting since there wasn't a previous teardown to do so
+            if (iMove == 0) {
+              const element = document.getElementById(`solution_step_${iMove}`);
+              element.style.color = 'red';
+              element.scrollIntoView({ block: 'end' }); // scroll all the way up (scroll first move to bottom of view)
+            }
           }
         }
       } catch (err) {
@@ -588,13 +665,14 @@ function getSolutionAnimation(followup: Animation | null = null): Animation {
         return { animationDone: true, renderNeeded: false };
       }
 
-      solutionEle.innerHTML = `Solution (${moveCount} moves)${solutionEle.innerHTML}`;
+      solutionEle.innerHTML = `<span id="solution_top_header">Solution (${moveCount} moves)</span>${solutionEle.innerHTML}`;
 
-      animations.push(extendAnimation(getDelayAnimation(2000), () => { console.log('Solved!') }));
+      animations.push(extendAnimation(getDelayAnimation(250), () => { console.log('Solved!') }));
       //if (followup != null) animations.push(followup);
       console.log(`solution queued up(${moveCount} moves)`);
 
-      return { animationDone: true, renderNeeded: false, minDelay: 1500 };
+      if (startPaused) animations.unshift(getPauseAnimation());
+      return { animationDone: true, renderNeeded: false, /*minDelay: 1500*/ };
     },
     tick() { return { animationDone: true, renderNeeded: false } },
     teardown() { },
@@ -665,13 +743,26 @@ function getShuffleAnimation(count: number, speed: number = undefined, solveLoop
 
     teardown() {
       if (count <= 0) {
-        if (solveLoop) animations.push(getSolutionAnimation(getShuffleAnimation(Math.max(count, originalCount), speed, solveLoop, delay, true)));
+        if (solveLoop) animations.push(getSolutionAnimation(false, getShuffleAnimation(Math.max(count, originalCount), speed, solveLoop, delay, true)));
         console.log('shuffled!');
       }
     }
   }
 }
 
+function getPauseAnimation(): Animation {
+  return {
+    setup() {
+      paused = true;
+      return { animationDone: true, renderNeeded: false };
+    },
+    tick(_) {
+      // should never be called
+      return { animationDone: true, renderNeeded: false };
+    },
+    teardown() { }
+  }
+}
 
 //animations.push(getShuffleAnimation(100, 60, true));
 //animations.push(getShuffleAnimation(500, 50 * (DEGREE - 1), true, 9));
@@ -686,7 +777,6 @@ function getShuffleAnimation(count: number, speed: number = undefined, solveLoop
 ].forEach(a => animations.push(getRotateAnimation({ rotation: toRotation(a, DEGREE), speed: 5 })));
 animations.push(getSolutionAnimation());
 */
-
 
 
 
@@ -814,7 +904,7 @@ function mouseMoveHandler(evt: MouseEvent) {
     requestRender();
   }
 
-  if (currentAnimation == null && animations.length == 0) {
+  if (currentAnimation == null && (paused || animations.length == 0)) {
     const isJustChanged = mousedSpace != null && justChangedSpace != null && mousedSpace.side == justChangedSpace.side && mousedSpace.space == justChangedSpace.space;
     if (!isJustChanged) justChangedSpace = null;
     const prevHighlighted = highlighted.some(a => a.some(b => b));
@@ -842,13 +932,15 @@ canvas.addEventListener('mousedown', function (evt) {
 canvas.addEventListener('mouseup', function (evt) {
   evt.preventDefault();
   const data = updateMouseData(evt, true);
-  if (data.mainClick || data.alternateClick) {
+  if ((data.mainClick || data.alternateClick)
+    && currentAnimation == null && (paused || animations.length == 0)) {
     const mousedSpace = getMousedSpace(mouseX, mouseY);
     if (mousedSpace != null) {
       arrangement[mousedSpace.side][mousedSpace.space] = (arrangement[mousedSpace.side][mousedSpace.space] + (data.mainClick ? 1 : 5)) % 6;
       highlighted[mousedSpace.side][mousedSpace.space] = false;
       colorCubes(cubes, arrangement, cubeOrientations, highlighted);
       requestRender();
+      arrangementNeedsNewSolution = true;
       justChangedSpace = mousedSpace;
     }
   }
@@ -856,52 +948,113 @@ canvas.addEventListener('mouseup', function (evt) {
 }, false);
 canvas.addEventListener('contextmenu', evt => evt.preventDefault());
 
-window.addEventListener('keypress', function (evt) {
+// we want only a keypress listener, but some keys are only triggered by keydown, so we need to emulate keypress.
+let backspaceDown = false, leftDown = false, rightDown = false, upDown = false, downDown = false;
+function keyPressHandler(evt: KeyboardEvent) {
   evt.preventDefault();
-  if (currentAnimation == null && animations.length == 0 && !mainDown && !alternateDown && !dragging) {
-    if (evt.key == 'Enter') {
-      const solutionEle = document.getElementById('solution_text');
+  if (!mainDown && !alternateDown && !dragging) {
+    const solutionEle = document.getElementById('solution_text');
+    if (currentAnimation == null && (paused || animations.length == 0)) {
+      if (evt.key == 'Enter') {
+        if (arrangementNeedsNewSolution) {
+          arrangementNeedsNewSolution = false;
+          animations = [];
+          paused = false;
 
-      // check if already solved
-      let solved = true;
-      for (let side = 0; side < 6; side++) {
-        for (let space = 0; space < DEGREE * DEGREE; space++) {
-          if (arrangement[side][space] != side) {
-            solved = false;
-            break;
+          // check if already solved
+          let solved = true;
+          for (let side = 0; side < 6; side++) {
+            for (let space = 0; space < DEGREE * DEGREE; space++) {
+              if (arrangement[side][space] != side) {
+                solved = false;
+                break;
+              }
+            }
+          }
+          if (solved) {
+            solutionEle.innerHTML = "Already solved!";
+          } else {
+            const colorCount = [0, 0, 0, 0, 0, 0];
+            for (let side = 0; side < 6; side++) {
+              for (let space = 0; space < DEGREE * DEGREE; space++) {
+                colorCount[arrangement[side][space]]++;
+              }
+            }
+            let issueFound = false;
+            let issueText = `Invalid Arrangement<br/>(need ${DEGREE * DEGREE} of each color)<br/><br/>Found:`;
+            for (let i = 0; i < 6; i++) {
+              if (colorCount[i] != DEGREE * DEGREE) {
+                issueFound = true;
+                issueText += `<br/>${colorCount[i]} ${Color[i]} space${colorCount[i] == 1 ? '' : 's'}`;
+              }
+            }
+            if (issueFound) {
+              Array.from(document.getElementsByClassName('solution')).forEach(element => (element as HTMLElement).style.pointerEvents = 'auto');
+              solutionEle.innerHTML = issueText;
+            } else {
+              animations.push(getSolutionAnimation(true));
+              animate();
+            }
           }
         }
-      }
-      if (solved) {
-        solutionEle.innerHTML = "Already solved!";
-      } else {
-        const colorCount = [0, 0, 0, 0, 0, 0];
-        for (let side = 0; side < 6; side++) {
-          for (let space = 0; space < DEGREE * DEGREE; space++) {
-            colorCount[arrangement[side][space]]++;
-          }
-        }
-        let issueFound = false;
-        let issueText = `Invalid Arrangement<br/>(need ${DEGREE * DEGREE} of each color)<br/><br/>Found:`;
-        for (let i = 0; i < 6; i++) {
-          if (colorCount[i] != DEGREE * DEGREE) {
-            issueFound = true;
-            issueText += `<br/>${colorCount[i]} ${Color[i]} space${colorCount[i] == 1 ? '' : 's'}`;
-          }
-        }
-        if (issueFound) {
-          Array.from(document.getElementsByClassName('solution')).forEach(element => (element as HTMLElement).style.pointerEvents = 'auto');
-          solutionEle.innerHTML = issueText;
-        } else {
-          animations.push(getSolutionAnimation());
+      } else if (evt.key == 'Backspace') {
+        arrangementNeedsNewSolution = true;
+        animations = [];
+        animations.push(getShuffleAnimation(Math.floor(100 * Math.log(DEGREE) - 20), DEGREE * 25, false));
+        paused = false;
+        animate();
+      } else if ((evt.key == 'Right' || evt.key == 'ArrowRight' || evt.key == 'Down' || evt.key == 'ArrowDown') && animations.length > 0) {
+        animations.splice(1, 0, getPauseAnimation());
+        paused = false;
+        animate();
+      } else if ((evt.key == 'Left' || evt.key == 'ArrowLeft' || evt.key == 'Up' || evt.key == 'ArrowUp')) {
+        if (undoSolutionAnimations.length > 0) {
+          let anim = undoSolutionAnimations.pop();
+          animations.unshift(anim.undo, getPauseAnimation(), anim.redo);
+          paused = false;
           animate();
+        } else {
+          document.getElementById("solution_top_header").scrollIntoView({ block: 'end' }); // scroll all the way down (scroll top header to bottom of view)
         }
       }
     }
-    else if (evt.key == ' ' || evt.key == 'Spacebar') {
-      animations.push(getShuffleAnimation(Math.floor(100 * Math.log(DEGREE) - 20), DEGREE * 25, false));
-      animate();
+
+    if ((evt.key == ' ' || evt.key == 'Spacebar') && animations.length > 0 && solutionEle.innerHTML.includes("Solution")) {
+      paused = !paused;
+      if (!paused) animate();
     }
+  }
+}
+window.addEventListener('keypress', keyPressHandler);
+window.addEventListener('keydown', (evt) => {
+  if (evt.key == 'Backspace' && !backspaceDown) {
+    keyPressHandler(evt);
+    backspaceDown = true;
+  } else if ((evt.key == 'Left' || evt.key == 'ArrowLeft') && !leftDown) {
+    keyPressHandler(evt);
+    leftDown = true;
+  } else if ((evt.key == 'Right' || evt.key == 'ArrowRight') && !rightDown) {
+    keyPressHandler(evt);
+    rightDown = true;
+  } else if ((evt.key == 'Up' || evt.key == 'ArrowUp') && !upDown) {
+    keyPressHandler(evt);
+    upDown = true;
+  } else if ((evt.key == 'Down' || evt.key == 'ArrowDown') && !downDown) {
+    keyPressHandler(evt);
+    downDown = true;
+  }
+});
+window.addEventListener('keyup', (evt) => {
+  if (evt.key == 'Backspace') {
+    backspaceDown = false;
+  } else if (evt.key == 'Left' || evt.key == 'ArrowLeft') {
+    leftDown = false;
+  } else if (evt.key == 'Right' || evt.key == 'ArrowRight') {
+    rightDown = false;
+  } else if (evt.key == 'Up' || evt.key == 'ArrowUp') {
+    upDown = false;
+  } else if (evt.key == 'Down' || evt.key == 'ArrowDown') {
+    downDown = false;
   }
 });
 
@@ -914,14 +1067,12 @@ canvas.addEventListener('wheel', function (evt) {
   }
 });
 
-let currentAnimation: Animation | null = null;
-let lastTick = Date.now();
 function animate() {
   let renderNeeded = false;
   let minDelay: number | null = null;
 
   if (currentAnimation == null) {
-    while (animations.length > 0) {
+    while (animations.length > 0 && !paused) {
       currentAnimation = animations.shift();
       const setupResult = currentAnimation.setup();
       lastTick = Date.now();
@@ -957,10 +1108,12 @@ function animate() {
 
   const loopAnimate = () => {
     const callAnimate = () => {
-      if (currentAnimation != null || animations.length > 0) animate();
+      if (currentAnimation == null && paused) console.log('paused')
+      else if (currentAnimation != null || animations.length > 0) animate();
       else {
         // this is the end of the script!
         console.log('Done animating.');
+        paused = false;
       }
     };
 
