@@ -463,6 +463,14 @@ let currentAnimation: Animation | null = null;
 let paused: boolean = false;
 let lastTick = Date.now();
 
+function swapControlsSrcWithSolution() {
+  const controlsEle = document.getElementById('controls');
+  const controlsRefSolutionEle = document.getElementById('controls_ref_solution');
+  const swapControlsSrc = controlsEle.getAttribute('src');
+  controlsEle.setAttribute('src', controlsRefSolutionEle.getAttribute('src'));
+  controlsRefSolutionEle.setAttribute('src', swapControlsSrc);
+}
+
 let undoSolutionAnimations: { undo: Animation, redo: Animation }[] = [];
 let arrangementNeedsNewSolution = true;
 function getSolutionAnimation(startPaused: boolean = undefined, followup: Animation | null = null): Animation {
@@ -661,10 +669,12 @@ function getSolutionAnimation(startPaused: boolean = undefined, followup: Animat
 
       if (!solved) {
         while (animations.length != 0) animations.pop();
+        if (solutionEle.innerHTML.includes("Solution")) swapControlsSrcWithSolution();
         solutionEle.innerHTML = `Can't solve.<br/>(is the arrangement correct?)`;
         return { animationDone: true, renderNeeded: false };
       }
 
+      if (!solutionEle.innerHTML.includes("Solution")) swapControlsSrcWithSolution();
       solutionEle.innerHTML = `<span id="solution_top_header">Solution (${moveCount} moves)</span>${solutionEle.innerHTML}`;
 
       animations.push(extendAnimation(getDelayAnimation(250), () => { console.log('Solved!') }));
@@ -704,6 +714,7 @@ function getShuffleAnimation(count: number, speed: number = undefined, solveLoop
         if (firstInstance) {
           console.log('shuffling');
           const solutionEle = document.getElementById('solution_text');
+          if (solutionEle.innerHTML.includes("Solution")) swapControlsSrcWithSolution();
           solutionEle.innerHTML = "";
           Array.from(document.getElementsByClassName('solution')).forEach(element => (element as HTMLElement).style.pointerEvents = 'none');
         }
@@ -972,6 +983,7 @@ function keyPressHandler(evt: KeyboardEvent) {
             }
           }
           if (solved) {
+            if (solutionEle.innerHTML.includes("Solution")) swapControlsSrcWithSolution();
             solutionEle.innerHTML = "Already solved!";
           } else {
             const colorCount = [0, 0, 0, 0, 0, 0];
@@ -990,6 +1002,7 @@ function keyPressHandler(evt: KeyboardEvent) {
             }
             if (issueFound) {
               Array.from(document.getElementsByClassName('solution')).forEach(element => (element as HTMLElement).style.pointerEvents = 'auto');
+              if (solutionEle.innerHTML.includes("Solution")) swapControlsSrcWithSolution();
               solutionEle.innerHTML = issueText;
             } else {
               animations.push(getSolutionAnimation(true));
